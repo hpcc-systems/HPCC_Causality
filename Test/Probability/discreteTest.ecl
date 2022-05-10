@@ -3,8 +3,8 @@
   *
   * Uses the Synth module to generate the test data.
   */
-IMPORT $.^.^ AS Causality;
-IMPORT Causality.Types;
+IMPORT $.^.^ AS HPCC_Causality;
+IMPORT HPCC_Causality.Types;
 IMPORT ML_Core.Types AS cTypes;
 IMPORT ML_Core;
 
@@ -15,7 +15,7 @@ numTestRecs := TRUNCATE(numRecs * .1);
 NumericField := cTypes.NumericField;
 DiscreteField := cTypes.DiscreteField;
 SEM := Types.SEM;
-Probability := Causality.Probability;
+Probability := HPCC_Causality.Probability;
 ProbSpec := Types.ProbSpec;
 ProbQuery := Types.ProbQuery;
 
@@ -33,7 +33,7 @@ semRow := ROW({
 mySEM := DATASET([semRow], SEM);
 
 // Generate the records to test with
-diceDat := Causality.Synth(mySEM).Generate(numRecs);
+diceDat := HPCC_Causality.Synth(mySEM).Generate(numRecs);
 
 OUTPUT(diceDat, ALL, NAMED('DiceRolls'));
 
@@ -100,7 +100,7 @@ OUTPUT(resultsDep2, ALL, NAMED('isIndependent'));
 // Test Classification.  This is a silly test because it is easy and
 // deterministic, but does exercise the function.
 
-dat2 := Causality.Synth(mySEM).Generate(numTestRecs);
+dat2 := HPCC_Causality.Synth(mySEM).Generate(numTestRecs);
 indeps := ['D1', 'D2'];
 indVarNums := [1,2];
 dep := 'ROLL';

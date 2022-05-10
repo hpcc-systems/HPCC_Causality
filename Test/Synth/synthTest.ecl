@@ -4,8 +4,8 @@
   * Uses the Synth module.
   *
   */
-IMPORT $.^.^ AS Causality;
-IMPORT Causality.Types;
+IMPORT $.^.^ AS HPCC_Causality;
+IMPORT HPCC_Causality.Types;
 IMPORT ML_CORE.Types AS cTypes;
 
 NumericField := cTypes.NumericField;
@@ -44,7 +44,7 @@ mySEM := DATASET([semRow], SEM);
 
 //mySynth := Synth(mySEM);
 
-outDat := Causality.Synth(mySEM).Generate(11);
+outDat := HPCC_Causality.Synth(mySEM).Generate(11);
 
 OUTPUT(outDat, ALL, NAMED('GeneratedData'));
 

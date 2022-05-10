@@ -1,8 +1,8 @@
 
 IMPORT Python3 AS Python;
 IMPORT ML_CORE.Types AS cTypes;
-IMPORT $.^ AS Causality;
-IMPORT Causality.Types;
+IMPORT $.^ AS HPCC_Causality;
+IMPORT HPCC_Causality.Types;
 IMPORT Std.System.Thorlib;
 
 nNodes := Thorlib.nodes();
@@ -47,7 +47,7 @@ EXPORT cModel := MODULE
       */
     EXPORT UNSIGNED Init(DATASET(cModelTyp) mod, DATASET(NumericField) ds) := FUNCTION
 
-        STREAMED DATASET(dummyRec) pyInit(STREAMED DATASET(NumericField) pyds, STREAMED DATASET(cModelTyp) pymod,
+        STREAMED DATASET(dummyRec) pyInit(STREAMED DATASET(NumericField) ds, STREAMED DATASET(cModelTyp) mods,
                             UNSIGNED pynode, UNSIGNED pynnodes) :=
                             EMBED(Python: globalscope(globalScope), persist('query'), activity)
             from because.causality import cgraph
@@ -68,7 +68,7 @@ EXPORT cModel := MODULE
                 RVs = []
                 DS = {}
                 varMap = {}
-                for mod in pymod:
+                for mod in mods:
                     # Should only be one model
                     modName = mod[0]
                     pyrvs = mod[1]
@@ -84,7 +84,7 @@ EXPORT cModel := MODULE
                         RVs.append(newrv)
                 ids = []
                 lastId = None
-                for rec in pyds:
+                for rec in ds:
                     wi, id, num, val = rec
                     DS[varMap[num]].append(val)
                     if id != lastId:
@@ -103,7 +103,7 @@ EXPORT cModel := MODULE
         ds_distr := DISTRIBUTE(ds, ALL);
         ds_S := SORT(NOCOMBINE(ds_distr), id, number, LOCAL);
         mod_distr := DISTRIBUTE(mod, ALL);
-        cmds := pyInit(ds_S, mod_distr, node, nnodes);
+        cmds := pyInit(ds_S, mod_distr, node, nNodes);
         cm := SUM(cmds, id);
         RETURN cm;
     END;
@@ -115,7 +115,7 @@ EXPORT cModel := MODULE
       * Since each node only runs a subset of the tests, the final score produced by each node
       * is not meaningful.  The set of results from all nodes should be passed to the "ScoreModel"
       * function below to produce a final score.  All of the heavy lifting (i.e. running the tests)
-      * is fully parellized.  Calculating the final score is light weight.  
+      * is fully paralellized.  Calculating the final score is light weight.  
       *
       */
     EXPORT STREAMED DATASET(ValidationReport) TestModel(UNSIGNED order, UNSIGNED power, UNSIGNED cm) := 
@@ -352,9 +352,8 @@ EXPORT cModel := MODULE
       *
       */
     EXPORT getCache(UNSIGNED cm, UNSIGNED order=3, UNSIGNED pwr=1) := FUNCTION
-        d := DATASET(1, TRANSFORM(dummyRec, SELF.dummy:= 1));
-        d_D := DISTRIBUTE(d, ALL);
-        cache := pyGetCache(d_D, cm, node, nnodes, order, pwr);
+        d := DATASET([], dummyRec);
+        cache := pyGetCache(d, cm, node, nnodes, order, pwr);
         return cache;
     END;
 

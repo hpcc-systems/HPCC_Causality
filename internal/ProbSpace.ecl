@@ -1,7 +1,7 @@
 IMPORT Python3 AS Python;
 IMPORT ML_CORE.Types AS cTypes;
-IMPORT $.^ AS Causality;
-IMPORT Causality.Types;
+IMPORT $.^ AS HPCC_Causality;
+IMPORT HPCC_Causality.Types;
 IMPORT Std.System.Thorlib;
 
 nNodes := Thorlib.nodes();
@@ -31,7 +31,7 @@ EXPORT ProbSpace := MODULE
       */
     EXPORT UNSIGNED Init(DATASET(NumericField) ds, SET OF STRING varNames) := FUNCTION
 
-        STREAMED DATASET(dummyRec) pyInit(STREAMED DATASET(NumericField) pyds, SET OF STRING pyvars,
+        STREAMED DATASET(dummyRec) pyInit(STREAMED DATASET(NumericField) ds, SET OF STRING vars,
                             UNSIGNED pynode, UNSIGNED pynnodes) :=
                             EMBED(Python: globalscope(globalScope), persist('query'), activity)
             from because.probability import ProbSpace
@@ -40,12 +40,11 @@ EXPORT ProbSpace := MODULE
             globlock.acquire()
             global PS
             if 'PS' in globals():
-                # Probspace alrady allocated on this node (by another thread).  We're done.
+                # Probspace already allocated on this node (by another thread).  We're done.
                 # Release the global lock
                 globlock.release()
                 return [(1,)] 
             try:
-                vars = pyvars
                 DS = {}
                 varMap = {}
                 for i in range(len(vars)):
@@ -54,7 +53,7 @@ EXPORT ProbSpace := MODULE
                     varMap[i+1] = var
                 ids = []
                 lastId = None
-                for rec in pyds:
+                for rec in ds:
                     wi, id, num, val = rec
                     DS[varMap[num]].append(val)
                     if id != lastId:
@@ -72,7 +71,7 @@ EXPORT ProbSpace := MODULE
         ENDEMBED;
         ds_distr := DISTRIBUTE(ds, ALL);
         ds_S := SORT(NOCOMBINE(ds_distr), id, number, LOCAL);
-        psds := pyInit(NOCOMBINE(ds_S), varNames, node, nnodes);
+        psds := pyInit(NOCOMBINE(ds_S), varNames, node, nNodes);
         ps := SUM(psds, id);
         RETURN ps;
     END;

@@ -4,8 +4,8 @@
   *
   * Uses the Synth module to generate the test data.
   */
-IMPORT $.^.^ AS Causality;
-IMPORT Causality.Types;
+IMPORT $.^.^ AS HPCC_Causality;
+IMPORT HPCC_Causality.Types;
 IMPORT ML_CORE.Types AS cTypes;
 
 numRecs := 10000;
@@ -13,7 +13,7 @@ numTestRecs := TRUNCATE(numRecs * .1);
 
 NumericField := cTypes.NumericField;
 SEM := Types.SEM;
-Probability := Causality.Probability;
+Probability := HPCC_Causality.Probability;
 ProbSpec := Types.ProbSpec;
 ProbQuery := Types.ProbQuery;
 
@@ -33,7 +33,7 @@ semRow := ROW({
 mySEM := DATASET([semRow], SEM);
 
 // Generate the records to test with
-dat := Causality.Synth(mySEM).Generate(numRecs);
+dat := HPCC_Causality.Synth(mySEM).Generate(numRecs);
 
 OUTPUT(dat[..10000], ALL, NAMED('Samples'));
 

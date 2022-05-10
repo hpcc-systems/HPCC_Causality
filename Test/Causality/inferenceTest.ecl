@@ -5,8 +5,8 @@
   * - Controlled Direct Effect
   */
 
-IMPORT $.^.^ AS Cause;
-IMPORT Cause.Types;
+IMPORT $.^.^ AS HPCC_Causality;
+IMPORT HPCC_Causality.Types;
 
 
 IMPORT ML_CORE.Types AS cTypes;
@@ -37,7 +37,7 @@ semRow := ROW({
 
 mySEM := DATASET([semRow], SEM);
 
-testDat := Cause.Synth(mySEM).Generate(nTestRecs);
+testDat := HPCC_Causality.Synth(mySEM).Generate(nTestRecs);
 
 // Note: The order of variables in the model much match the order of varNames in the SEM.
 RVs := DATASET([
@@ -54,7 +54,7 @@ mod := DATASET([{'M8', RVs}], Types.cModel);
 OUTPUT(mySEM, NAMED('SEM'));
 OUTPUT(mod, NAMED('Model'));
 
-cm := Cause.Causality(mod, testDat);
+cm := HPCC_Causality.Causality(mod, testDat);
 
 testsD := DATASET([{1, DATASET([{'C'}], ProbSpec), DATASET([], ProbSpec), DATASET([{'A',[1]}], ProbSpec)},
                   {2, DATASET([{'C'}], ProbSpec), DATASET([], ProbSpec), DATASET([{'A',[1]},{'B',[1]}], ProbSpec)},

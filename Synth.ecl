@@ -1,6 +1,7 @@
 IMPORT Std.System.Thorlib;
 IMPORT ML_CORE.Types AS cTypes;
-IMPORT $.Types;
+IMPORT $ AS HPCC_Causality;
+IMPORT HPCC_Causality.Types;
 IMPORT Python3 AS Python;
 SEM := Types.SEM;
 nNodes := Thorlib.nodes();

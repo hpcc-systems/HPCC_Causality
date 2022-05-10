@@ -1,7 +1,7 @@
-IMPORT $ AS Cause;
-IMPORT Cause.Types;
+IMPORT $ AS HPCC_Causality;
+IMPORT HPCC_Causality.Types;
 IMPORT ML_Core.Types AS cTypes;
-IMPORT Cause.internal.cModel;
+IMPORT HPCC_Causality.internal.cModel;
 
 cModelTyp := Types.cModel;
 validationReport := Types.validationReport;

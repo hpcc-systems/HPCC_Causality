@@ -1,8 +1,8 @@
-IMPORT $ AS Causality;
-IMPORT Causality.Types;
+IMPORT $ AS HPCC_Causality;
+IMPORT HPCC_Causality.Types;
 IMPORT ML_Core.Types AS cTypes;
 IMPORT Python3 AS Python;
-IMPORT Causality.internal.ProbSpace;
+IMPORT HPCC_Causality.internal.ProbSpace;
 
 ProbQuery := Types.ProbQuery;
 ProbSpec := Types.ProbSpec;
@@ -10,7 +10,7 @@ Distr := Types.Distribution;
 NumericField := cTypes.NumericField;
 
 /**
-  * Proobability Module
+  * Probability Module
   *
   * Contains a set of probability functions to execute against a multivariate dataset.
   * The dataset consists of a set of variable names, and a set of observations for
