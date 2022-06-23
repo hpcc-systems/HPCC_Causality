@@ -106,9 +106,9 @@ EXPORT Probability(DATASET(NumericField) ds, SET OF STRING varNames) := MODULE
       *     Values less than .5 indicate probable independence.
       *     Values greater than .5 indicate probable dependence
       */
-    EXPORT DATASET(NumericField) Dependence(DATASET(ProbQuery) queries) := FUNCTION
+    EXPORT DATASET(NumericField) Dependence(DATASET(ProbQuery) queries, STRING dMethod='prob') := FUNCTION
         queries_D := DISTRIBUTE(queries, id);
-        deps := ProbSpace.Dependence(queries_D, PS);
+        deps := ProbSpace.Dependence(queries_D, dMethod, PS);
         deps_S := SORT(deps, id);
         RETURN deps_S;
     END;
@@ -125,9 +125,9 @@ EXPORT Probability(DATASET(NumericField) ds, SET OF STRING varNames) := MODULE
       *     targets are most likely independent.  0 indicates probable dependence.
       *
       */
-    EXPORT DATASET(NumericField) isIndependent(DATASET(ProbQuery) queries) := FUNCTION
+    EXPORT DATASET(NumericField) isIndependent(DATASET(ProbQuery) queries, STRING dMethod='prob') := FUNCTION
         queries_D := DISTRIBUTE(queries, id);
-        deps := ProbSpace.Dependence(queries_D, PS);
+        deps := ProbSpace.Dependence(queries_D, dMethod, PS);
         deps_B := PROJECT(deps, TRANSFORM(RECORDOF(LEFT),
                                     SELF.value := IF(LEFT.value > .5, 0, 1),
                                     SELF := LEFT), LOCAL);
