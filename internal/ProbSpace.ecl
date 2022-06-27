@@ -223,7 +223,7 @@ EXPORT ProbSpace := MODULE
       *
       */
 
-    EXPORT STREAMED DATASET(NumericField) Dependence(STREAMED DATASET(ProbQuery) queries, UNSIGNED ps) := 
+    EXPORT STREAMED DATASET(NumericField) Dependence(STREAMED DATASET(ProbQuery) queries, STRING dmethod, UNSIGNED ps) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
         assert 'PS' in globals(), 'ProbSpace.Dependence: PS is not initialized.'
         try:
@@ -247,7 +247,7 @@ EXPORT ProbSpace := MODULE
                     else:
                         condition = cVar
                     conditions.append(condition)
-                result = PS.dependence(v1, v2, conditions)
+                result = PS.dependence(v1, v2, conditions, dMethod=dmethod) 
                 results.append((1, id, 1, result))
             return results
         except:

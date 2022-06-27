@@ -76,11 +76,11 @@ EXPORT cModel := MODULE
                         pyrv = pyrvs[i]
                         rvName = pyrv[0]
                         rvParents = pyrv[1]
-                        rvIsDiscrete = pyrv[2]
+                        rvIsObserved = pyrv[2]
                         rvType = pyrv[3]
                         DS[rvName] = []
                         varMap[i+1] = rvName
-                        newrv = rv.RV(rvName, rvParents, rvIsDiscrete, rvType)
+                        newrv = rv.RV(rvName, rvParents, rvIsObserved, rvType)
                         RVs.append(newrv)
                 ids = []
                 lastId = None
