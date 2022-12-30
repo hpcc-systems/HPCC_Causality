@@ -8,6 +8,8 @@ ProbQuery := Types.ProbQuery;
 ProbSpec := Types.ProbSpec;
 Distr := Types.Distribution;
 NumericField := cTypes.NumericField;
+AnyField := Types.AnyField;
+nlQuery := Types.nlQuery;
 
 /**
   * Probability Module
@@ -32,11 +34,11 @@ NumericField := cTypes.NumericField;
   *               order of variable names in the varNames parameter.
   * @param varNames -- An ordered list of variable name strings.
   */
-EXPORT Probability(DATASET(NumericField) ds, SET OF STRING varNames) := MODULE
+EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING categoricals=[]) := MODULE
     // This is a module-level initialized ProbSpace.  Initialization happens when
     // The first probability function is called.  At that point, the dataset
     // is sent to each node.
-    SHARED PS := ProbSpace.Init(ds, varNames);
+    SHARED PS := ProbSpace.Init(ds, varNames, categoricals);
     /**
       * Calculate a series of numerical probabilities.
       *
@@ -74,6 +76,27 @@ EXPORT Probability(DATASET(NumericField) ds, SET OF STRING varNames) := MODULE
         exps := ProbSpace.E(queries_D, PS);
         exps_S := SORT(exps, id);
         RETURN exps_S;
+    END;
+
+    /**
+      * Natural Language Probability or Expectation query
+      * Natural Language Probability query
+      *
+      */
+    EXPORT DATASET(AnyField) Query(DATASET(nlQuery) queries) := FUNCTION
+      queries_D := DISTRIBUTE(queries, id);
+      results := ProbSpace.Query(queries_D, PS);
+      return SORT(results, id);
+    END;
+
+    /**
+      * Natural Language Probability Distribution query
+      *
+      */
+    EXPORT DATASET(Distr) QueryDistr(DATASET(nlQuery) queries) := FUNCTION
+      queries_D := DISTRIBUTE(queries, id);
+      results := ProbSpace.QueryDistr(queries_D, PS);
+      return SORT(results, id);
     END;
 
     /**

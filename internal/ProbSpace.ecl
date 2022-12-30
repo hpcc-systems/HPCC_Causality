@@ -10,6 +10,8 @@ node := Thorlib.node();
 NumericField := cTypes.NumericField;
 ProbQuery := Types.ProbQuery;
 PDist := Types.Distribution;
+AnyField := Types.AnyField;
+nlQuery := Types.nlQuery;
 
 globalScope := 'probspace' + node + '.ecl';
 
@@ -29,15 +31,46 @@ EXPORT ProbSpace := MODULE
       * It returns an UNSIGNED, which is passed on to all other functions to make sure
       * that Init is run before them.
       */
-    EXPORT UNSIGNED Init(DATASET(NumericField) ds, SET OF STRING varNames) := FUNCTION
+    EXPORT UNSIGNED Init(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING categoricals=[]) := FUNCTION
 
-        STREAMED DATASET(dummyRec) pyInit(STREAMED DATASET(NumericField) ds, SET OF STRING vars,
+        STREAMED DATASET(dummyRec) pyInit(STREAMED DATASET(AnyField) ds, SET OF STRING vars,
+                            SET OF STRING pycategoricals,
                             UNSIGNED pynode, UNSIGNED pynnodes) :=
                             EMBED(Python: globalscope(globalScope), persist('query'), activity)
             from because.probability import ProbSpace
             from because.hpcc_utils import globlock # Global lock
             globlock.allocate()
             globlock.acquire()
+            global extractSpec
+            def _extractSpec(inSpecs):
+                """
+                """
+                outSpecs = []
+                for inSpec in inSpecs:
+                    var, args, strArgs, isEnum = inSpec
+                    #assert False, 'inSpec = ' + var + ',' + str(args) + ',' + str(strArgs) + ',' + str(isEnum) + ',' + str(len(args))
+                    if len(args) > 2 or isEnum or (strArgs and len(strArgs) > 1):
+                        # Is an enumeration of valid values
+                        if strArgs:
+                            # String arguments
+                            outSpec = (var, strArgs)
+                        else:
+                            # Numeric arguments
+                            outSpec = (var, args) 
+                    else:                
+                        # Is bare variable, exact value, or range.
+                        if strArgs:
+                            outSpec = (var, strArgs[0])
+                        else:
+                            if len(args) == 0:
+                                outSpec = (var,)
+                            elif len(args) == 1:
+                                outSpec = (var, args[0])
+                            else:
+                                outSpec = (var,) + tuple(args)
+                    outSpecs.append(outSpec)
+                return outSpecs
+            extractSpec = _extractSpec
             global PS
             if 'PS' in globals():
                 # Probspace already allocated on this node (by another thread).  We're done.
@@ -54,12 +87,15 @@ EXPORT ProbSpace := MODULE
                 ids = []
                 lastId = None
                 for rec in ds:
-                    wi, id, num, val = rec
-                    DS[varMap[num]].append(val)
+                    wi, id, num, val, strVal = rec
+                    if strVal:
+                        DS[varMap[num]].append(strVal)
+                    else:
+                        DS[varMap[num]].append(val)
                     if id != lastId:
                         ids.append(id)
                         lastId = id
-                PS = ProbSpace(DS)
+                PS = ProbSpace(DS, categorical=pycategoricals)
                 # Release the global lock
                 globlock.release()
                 return [(1,)]
@@ -71,7 +107,7 @@ EXPORT ProbSpace := MODULE
         ENDEMBED;
         ds_distr := DISTRIBUTE(ds, ALL);
         ds_S := SORT(NOCOMBINE(ds_distr), id, number, LOCAL);
-        psds := pyInit(NOCOMBINE(ds_S), varNames, node, nNodes);
+        psds := pyInit(NOCOMBINE(ds_S), varNames, categoricals, node, nNodes);
         ps := SUM(psds, id);
         RETURN ps;
     END;
@@ -90,23 +126,12 @@ EXPORT ProbSpace := MODULE
             for query in queries:
                 targets = []
                 id, targs, conds = query[:3]
-                for targ in targs:
-                    var, args = targ
-                    assert len(args) > 0, 'ProbSpace.P: Target must be bound (i.e. have at least 1 argument supplied).'
-                    targSpec = (var,) + tuple(args)
-                    targets.append(targSpec)
-                if len(targets) == 1:
-                    targets = targets[0]
-
-                conditions = []
-                for cond in conds:
-                    cVar, cArgs = cond
-                    if len(cArgs) >= 1:
-                        condition = (cVar,) + tuple(cArgs)
-                    else:
-                        condition = cVar
-                    conditions.append(condition)
+                targets = extractSpec(targs)
+                for target in targets:
+                    assert len(target) > 1, 'ProbSpace.P: Targets must be bound (i.e. have at least 1 argument supplied).'
+                conditions = extractSpec(conds)
                 result = PS.P(targets, conditions)
+                #assert False, 'targets, conditions, result = ' + str(targets) + ',' + str(conditions) + ',' + str(result) + ',' + str(PS.getVarNames())
                 results.append((1, id, 1, result))
             return results
         except:
@@ -120,7 +145,7 @@ EXPORT ProbSpace := MODULE
       * Queries are distributed among nodes so that the run in parallel.
       *
       */
-    EXPORT STREAMED DATASET(NumericField) E(STREAMED DATASET(ProbQuery) queries, UNSIGNED ps) := 
+    EXPORT STREAMED DATASET(AnyField) E(STREAMED DATASET(ProbQuery) queries, UNSIGNED ps) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
         assert 'PS' in globals(), 'ProbSpace.E: PS is not initialized.'
         try:
@@ -128,27 +153,98 @@ EXPORT ProbSpace := MODULE
             for query in queries:
                 targets = []
                 id, targs, conds = query[:3]
-                for targ in targs:
-                    var, args = targ
-                    assert len(args) == 0, 'ProbSpace.E: Target must be unbound (i.e. No arguments provided).'
-                    targSpec = var
-                    targets.append(targSpec)
-                assert len(targets) == 1, 'ProbSpace.E:  Expectation can only be given for a single target. ' + str(len(targets)) + ' were given.'
+                targets = extractSpec(targs)
+                assert len(targets) == 1 and len(targets[0]) == 1, 'ProbSpace.E: Target must be single and unbound (i.e. No arguments provided).'
                 targets = targets[0]
-                conditions = []
-                for cond in conds:
-                    cVar, cArgs = cond
-                    if len(cArgs) >= 1:
-                        condition = (cVar,) + tuple(cArgs)
-                    else:
-                        condition = cVar
-                    conditions.append(condition)
+                conditions = extractSpec(conds)
                 result = PS.E(targets, conditions)
-                results.append((1, id, 1, result))
+                if type(result) == type(''):
+                    results.append((1, id, 1, 0, result))
+                else:
+                    results.append((1, id, 1, result, ''))
             return results
         except:
             from because.hpcc_utils import format_exc
             assert False, format_exc.format('ProbSpace.E')
+    ENDEMBED;
+
+    EXPORT STREAMED DATASET(AnyField) Query(STREAMED DATASET(nlQuery) queries, UNSIGNED ps) := 
+        EMBED(Python: globalscope(globalScope), persist('query'), activity)
+        from because.probability import probquery
+        assert 'PS' in globals(), 'ProbSpace.E: PS is not initialized.'
+        try:
+            inQueries = []
+            inIds = []
+            for item in queries:
+                id, query = item
+                inQueries.append(query)
+                inIds.append(id)
+            results = probquery.queryList(PS, inQueries, allowedResults=['P','E'])
+            for i in range(len(results)):
+                result = results[i]
+                id = inIds[i]
+                if type(result) == type(''):
+                    yield (1, id, 1, 0.0, result)
+                else:
+                    yield (1, id, 1, float(result), '')
+        except:
+            from because.hpcc_utils import format_exc
+            assert False, format_exc.format('ProbSpace.Query')
+    ENDEMBED;
+
+    /**
+      * Call the ProbSpace.distr() function with a set of natural language
+      * queries.
+      *
+      * Queries are distributed among nodes so that the run in parallel.
+      * Returns distributions as Types.Distribution dataset
+      *
+      */
+    EXPORT STREAMED DATASET(PDist) QueryDistr(STREAMED DATASET(nlQuery) queries, UNSIGNED ps) := 
+        EMBED(Python: globalscope(globalScope), persist('query'), activity)
+        from because.hpcc_utils import formatQuery
+        import numpy as np
+        from because.probability import probquery
+        assert 'PS' in globals(), 'ProbSpace.Distr: PS is not initialized.'
+        try:
+            inQueries = []
+            inIds = []
+            for item in queries:
+                id, query = item
+                inQueries.append(query)
+                inIds.append(id)
+            results = probquery.queryList(PS, inQueries, allowedResults=['D'])
+            for i in range(len(results)):
+                dist = results[i]
+                hist = []
+                for entry in dist.ToHistTuple():
+                    minv, maxv, p = entry
+                    hist.append((float(minv), float(maxv), float(p)))
+                isDiscrete = dist.isDiscrete
+                deciles = []
+                if not isDiscrete:
+                    # Only do deciles for continuous data.
+                    for p in range(10, 100, 10):
+                        decile = float(dist.percentile(p))
+                        deciles.append((float(p), float(p), decile))
+                yield ( id,
+                        inQueries[i],
+                        dist.N,
+                        isDiscrete,
+                        float(dist.minVal()),
+                        float(dist.maxVal()),
+                        dist.E(),
+                        dist.stDev(),
+                        dist.skew(),
+                        dist.kurtosis(),
+                        float(dist.median()),
+                        float(dist.mode()),
+                        hist,
+                        deciles
+                        )
+        except:
+            from because.hpcc_utils import format_exc
+            assert False, format_exc.format('QueryDistr')
     ENDEMBED;
 
     /**
@@ -168,21 +264,10 @@ EXPORT ProbSpace := MODULE
             for query in queries:
                 targets = []
                 id, targs, conds = query[:3]
-                for targ in targs:
-                    var, args = targ
-                    assert len(args) == 0, 'ProbSpace.Distr: Target must be unbound (i.e. No arguments provided).'
-                    targSpec = var
-                    targets.append(targSpec)
-                assert len(targets) == 1, 'ProbSpace.Distr:  Distribution can only be given for a single target. ' + str(len(targets)) + ' were given.'
+                targets = extractSpec(targs)
+                assert len(targets) == 1 and len(targets[0]) == 1, 'ProbSpace.Distr: Target must be single and unbound (i.e. No arguments provided).'
                 targets = targets[0]
-                conditions = []
-                for cond in conds:
-                    cVar, cArgs = cond
-                    if len(cArgs) >= 1:
-                        condition = (cVar,) + tuple(cArgs)
-                    else:
-                        condition = cVar
-                    conditions.append(condition)
+                conditions = extractSpec(conds)
                 dist = PS.distr(targets, conditions)
                 hist = []
                 for entry in dist.ToHistTuple():

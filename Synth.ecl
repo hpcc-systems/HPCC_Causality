@@ -7,6 +7,8 @@ SEM := Types.SEM;
 nNodes := Thorlib.nodes();
 node := Thorlib.node();
 NumericField := cTypes.NumericField;
+AnyField := Types.AnyField;
+
 /**
   * Module to produce a synthetic, multivariate dataset from a Structural Equation
   * Model (SEM).
@@ -30,12 +32,12 @@ EXPORT Synth(DATASET(SEM) semDef) := MODULE
       *    to the order of variables specified in the SEM.
       * @see ML_Core.Types.NumericField
       */
-    EXPORT DATASET(NumericField) Generate(UNSIGNED numRecs) := FUNCTION
+    EXPORT DATASET(AnyField) Generate(UNSIGNED numRecs) := FUNCTION
         /**
           * Embed function to do the gereration using the "Because.synth" python module.
           * @private
           */
-        STREAMED DATASET(NumericField) pySynth(STREAMED DATASET(SEM) pysem,
+        STREAMED DATASET(AnyField) pySynth(STREAMED DATASET(SEM) pysem,
                     UNSIGNED nrecs, UNSIGNED pynnodes, UNSIGNED pynode)
                         := EMBED(Python: globalscope(globalScope), persist('query'), activity)
             from math import ceil
@@ -64,7 +66,10 @@ EXPORT Synth(DATASET(SEM) semDef) := MODULE
                 for rec in recs:
                     for j in range(len(rec)):
                         val = rec[j]
-                        outrec = (1, firstId + i, j+1, float(val))
+                        if type(val) == type(''):
+                            outrec = (1, firstId + i, j+1, 0.0, val)
+                        else:
+                            outrec = (1, firstId + i, j+1, float(val), '')
                         outrecs.append(outrec)
                     i += 1
             except:

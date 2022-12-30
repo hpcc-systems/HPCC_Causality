@@ -1,23 +1,61 @@
+IMPORT ML_Core.Types AS mlcTypes;
+
+NumericField := mlcTypes.NumericField;
+
 /**
   * Module provides all common record types for the Causality Bundle
   */
 EXPORT Types := MODULE
     /**
+      * AnyField record layout
+      *
+      * AnyField extends NumericField to handle textual as well as numeric data.
+      * The textVal field is added, which overrides the val field if the value is
+      * textual.
+      * @see ML_Core.Types.NumericField
+      * @field textVal -- The string value of the field.
+      *
+      */
+    EXPORT AnyField := RECORD(NumericField)
+        STRING textVal := '';
+    END;
+
+    /**
+      * Natural Language Query.
+      *
+      * Supports probability queries in a simple format.
+      */
+    EXPORT nlQuery := RECORD
+      UNSIGNED id;
+      STRING query;
+    END;
+    /**
       * Record layout for Probability Query parameters
       *
-      * Three forms are supported:
-      * - Variable Name alone (i.e. Unbound variable)
-      * - Variable Name and One Argument (i.e. Var = arg1)
-      * - Variable Name and Two Arguments (i.e. arg1 <= Var <= arg2)
+      * Various forms are supported:
+      * 1) Variable Name alone (i.e. Unbound variable)
+      * 2) Variable Name and One Argument (i.e. Val = arg1)
+      * 3) Variable Name and Two Arguments (i.e. arg1 <= Val <= arg2)
+      * 4) Variable Name and an Enumerated Set of Values (i.e. Val in Set(args))
+      *     For discrete variables only.
+      * 5) Variable Name and one or more string arguments (i.e. Val in Set(strArgs)).
+      *     For text-based variables.
       *
       * @field VarName -- The variable name
-      * @field Args -- The arguments for the query spec.  O-2 arguments
-      *                    may be provided depending on the context.
+      * @field Args -- The arguments for the query spec.  Any number arguments
+      *                    may be provided depending on the context (for Form 1-4 above)
+      * @field strArgs -- A set of string values (for Form 5 above only)
+      * @field isEnum -- Boolean field. If true, then Args will be treated as Form
+      *                   4 above.  To avoid confusion between Form 3 and Form 4 with
+      *                   two values enumerated.
       */
     EXPORT ProbSpec := RECORD
         STRING VarName;
         SET OF REAL Args := [];
+        SET OF STRING strArgs := [];
+        BOOLEAN isEnum := False;
     END;
+
     /**
       * Record Layout for Probability Queries.
       *

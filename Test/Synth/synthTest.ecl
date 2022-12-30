@@ -8,7 +8,7 @@ IMPORT $.^.^ AS HPCC_Causality;
 IMPORT HPCC_Causality.Types;
 IMPORT ML_CORE.Types AS cTypes;
 
-NumericField := cTypes.NumericField;
+AnyField := Types.AnyField;
 SEM := Types.SEM;
 
 /**
@@ -29,13 +29,14 @@ semRow := ROW({
     ['t = 0'],   // Init is typically empty, but we are using it
                 // to initialize a variable 't', so that we can create a
                 // time-dependent series for illustrative purposes.
-    ['A', 'B', 'C', 'D'], // Variable names 
+    ['A', 'B', 'C', 'D', 'E'], // Variable names 
     // Equations
     ['A = normal(0,1)',  // Can use any distribution defined in numpy.random
     'B = normal(0,1)',
     'C = A + B',
     'D = tanh(C) + sin(t/(2*pi)) + geometric(.1)', // Can use nearly any math function
                                                     // from python math library.
+    'E = "yes" if C > 0 else "no"',
     't = t + 1' // t is not a returned variable, but is used (in this case)
             // to produce a time-dependent series (note sin in D calculation above).
     ]}, SEM);
