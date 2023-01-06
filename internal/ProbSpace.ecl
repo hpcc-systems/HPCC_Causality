@@ -215,22 +215,43 @@ EXPORT ProbSpace := MODULE
                 inIds.append(id)
             results = probquery.queryList(PS, inQueries, allowedResults=['D'])
             for i in range(len(results)):
+                id = inIds[i]
                 dist = results[i]
                 hist = []
                 for entry in dist.ToHistTuple():
                     minv, maxv, p = entry
                     hist.append((float(minv), float(maxv), float(p)))
                 isDiscrete = dist.isDiscrete
+                isCategorical = PS.isCategorical(dist.rvName)
                 deciles = []
                 if not isDiscrete:
                     # Only do deciles for continuous data.
                     for p in range(10, 100, 10):
                         decile = float(dist.percentile(p))
                         deciles.append((float(p), float(p), decile))
+                stringVals = []
+                if PS.isStringVal(dist.rvName):
+                    strVals = PS.getValues(dist.rvName)
+                    for j in range(len(strVals)):
+                        strVal = strVals[j]
+                        numVal = int(PS.getNumValue(dist.rvName, strVal))
+                        stringVals.append((numVal, strVal))
+                    stringVals.sort()
+                bounds = dist.truncation()
+                isBoundedL = not isDiscrete and bounds[0] is not None
+                isBoundedU = not isDiscrete and bounds[1] is not None
+                boundL = boundU = 0.0
+                if isBoundedL:
+                  boundL = bounds[0]
+                if isBoundedU:
+                  boundU = bounds[1]
+                modality = dist.modality()
+
                 yield ( id,
                         inQueries[i],
                         dist.N,
                         isDiscrete,
+                        isCategorical,
                         float(dist.minVal()),
                         float(dist.maxVal()),
                         dist.E(),
@@ -239,8 +260,12 @@ EXPORT ProbSpace := MODULE
                         dist.kurtosis(),
                         float(dist.median()),
                         float(dist.mode()),
+                        [isBoundedL, isBoundedU],
+                        [boundL, boundU],
+                        modality,
                         hist,
-                        deciles
+                        deciles,
+                        stringVals
                         )
         except:
             from because.hpcc_utils import format_exc
@@ -274,16 +299,27 @@ EXPORT ProbSpace := MODULE
                     minv, maxv, p = entry
                     hist.append((float(minv), float(maxv), float(p)))
                 isDiscrete = dist.isDiscrete
+                isCategorical = PS.isCategorical(dist.rvName)
                 deciles = []
                 if not isDiscrete:
                     # Only do deciles for continuous data.
                     for p in range(10, 100, 10):
                         decile = float(dist.percentile(p))
                         deciles.append((float(p), float(p), decile))
+                stringVals = []
+                if PS.isStringVal(dist.rvName):
+                    strVals = PS.getValues(rvName)
+                    for i in range(len(strVals)):
+                        strVal = strVals[i]
+                        numVal = int(PS.getNumValue(dist.rvName, strVal))
+                        stringVals.append((numVal, strVal))
+                    stringVals.sort()
+
                 results.append((id,
                                 formatQuery.format('distr', [(targets,)], conditions),
                                 dist.N,
                                 isDiscrete,
+                                isCategorical,
                                 float(dist.minVal()),
                                 float(dist.maxVal()),
                                 dist.E(),
@@ -293,7 +329,8 @@ EXPORT ProbSpace := MODULE
                                 float(dist.median()),
                                 float(dist.mode()),
                                 hist,
-                                deciles
+                                deciles,
+                                stringVals
                                 ))
             return results
         except:

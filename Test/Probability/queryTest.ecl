@@ -1,6 +1,6 @@
 /**
-  * Test continuous probabilities using a samples from various distributions with
-  * non-linear interdependence.
+  * Test the natural language query mechanism for Probabilities,
+  * Expectations, and Distributions.  Include textual variables.
   *
   * Uses the Synth module to generate the test data.
   */
@@ -25,9 +25,9 @@ semRow := ROW({
         // Y1 is dependent on X1, Y2 is dependent on X1 and X2, ...
         // Y5 is dependent on X1, ... ,X5
         'X1 = normal(2.5, 1)',
-        'X2 = logistic(0, 2)',
+        'X2 = choice([logistic(-2, .5), logistic(2,.5)])',
         'X3 = beta(2,5)',
-        'X4 = abs(normal(0, 2))',
+        'X4 = truncated("normal(0, 2)", .5, None)',
         'X5 = exponential() * .2',
         'Y1 = 2 * X1 + normal(0, .1)',
         'Y2 = -Y1 + tanh(X2*3) + normal(0,.1)',
@@ -44,20 +44,26 @@ semRow := ROW({
 
 mySEM := DATASET([semRow], SEM);
 
+
+// First test Probabilities and Expectations.
+
 // Generate the records to test with
 dat := HPCC_Causality.Synth(mySEM).Generate(numRecs);
 
 OUTPUT(dat[..10000], ALL, NAMED('Samples'));
 
+// Treat TV as a categorical variable so that expectations come out as strings.
 prob := Probability(dat, semRow.VarNames, categoricals:=['TV']);
 
+// Include various use of spacing around terms to check the parser's
+// resilience to spacing variations.
 tests := DATASET([{1, 'P(X1 >= 2)'},
                 {2, 'P(TV = medium | X5 between [.4,.8])'},
                 {3, 'E(Y4)'},
-                {4, 'E(TV | X2 < -.75)'},
+                {4, 'E(TV| X2 < -.75)'},
                 {5, 'P(X2 between[-.5, .5] | TV in [medium, large])'},
                 {6, 'P(TV=medium)'},
-                {7, 'E(TV | X2 between[-1.1, 1.1])'}
+                {7, 'E(TV |X2 between[-1.1, 1.1])'}
                 //{8, 'P(TV)'}  // Should fail
                 ], nlQuery);
 
@@ -65,11 +71,14 @@ results := prob.Query(tests);
 
 OUTPUT(results, ALL, NAMED('Probabilities'));
 
-// Now do distribution queries.
+// Now do Distribution queries.
 dtests := DATASET([
                   {1, 'P(X1)'},
-                  {2, 'P(TV | X5 between [.4, .8])'},
-                  {3, 'P(Y1 | X1=1)'}
+                  {2, 'P(TV)'},
+                  {3, 'P(TV|X2 > -.5)'},
+                  {4, 'P(Y1 | X1=1)'},
+                  {5, 'P(X2)'},
+                  {6, 'P(X4)'}
                 ], nlQuery);
 
 dresults := prob.QueryDistr(dtests);

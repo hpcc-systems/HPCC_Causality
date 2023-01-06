@@ -101,6 +101,11 @@ EXPORT Types := MODULE
         REAL P;
     END;
 
+    EXPORT StrValEntry := RECORD
+      UNSIGNED numVal;
+      STRING strVal;
+    END;
+
     /**
       * Record to represent the Distribution of a single random variable
       *
@@ -143,6 +148,7 @@ EXPORT Types := MODULE
         STRING query;
         UNSIGNED nSamples;
         Boolean isDiscrete;
+        Boolean isCategorical;
         REAL minVal;
         REAL maxVal;
         REAL Mean;
@@ -151,8 +157,12 @@ EXPORT Types := MODULE
         REAL Kurtosis;
         REAL Median;
         REAL Mode;
+        SET OF BOOLEAN isBounded;
+        SET OF REAL bounds;
+        UNSIGNED Modality;
         DATASET(HistEntry) Histogram;
         DATASET(HistEntry) Deciles;
+        DATASET(StrValEntry) StringVals
     END;
 
     /**
