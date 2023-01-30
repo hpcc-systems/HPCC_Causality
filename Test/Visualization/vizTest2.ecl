@@ -56,8 +56,18 @@ tests := DATASET([{1, 'P(height <= 66)'}
 
 results := prob.Query(tests);
 
-query := 'E(height | weight)';
+query := 'P(height < 66.0 | weight)';
 
-g := viz.getDataGrid(query, prob.PS);
+
+pr := viz.parseQuery(query, prob.PS);
+OUTPUT(pr);
+vars := viz.getVarNames(pr);
+//OUTPUT(vars);
+g := viz.GetGrid(pr, prob.PS);
 OUTPUT(g);
-viz.Plot(['P(height)','P(weight)'], prob.PS);
+fg := viz.fillDataGrid(g, ['weight', 'height'], 'bprob', prob.PS);
+OUTPUT(fg);
+
+cd := viz.GetDataGrid(query, prob.PS);
+OUTPUT(cd);
+viz.Plot(['E(height | weight)',query], prob.PS);

@@ -332,6 +332,7 @@ EXPORT Types := MODULE
   EXPORT ChartInfo := RECORD
     STRING dataname;
     STRING qtype;
+    UNSIGNED dims;
     STRING xlabel;
     STRING ylabel;
     STRING zlabel;
