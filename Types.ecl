@@ -312,4 +312,33 @@ EXPORT Types := MODULE
       DATASET(SetMembers) ClustGraph;
       DATASET(SetMembers) VarGraph;
     END;
+
+  EXPORT ChartGrid := RECORD
+    UNSIGNED id;
+    DATASET(AnyField) gridItem;
+  END;
+
+  EXPORT ChartData := RECORD
+    UNSIGNED id;
+    STRING x_;
+    STRING y_;
+    STRING z_;
+    REAL range1low := 0.0;
+    REAL range1high := 0.0;
+    REAL range2low := 0.0;
+    REAL range2high := 0.0;
+  END;
+
+  EXPORT ChartInfo := RECORD
+    STRING dataname;
+    STRING qtype;
+    STRING xlabel;
+    STRING ylabel;
+    STRING zlabel;
+    REAL mean;
+    REAL range1low;
+    REAL range1high;
+    REAL range2low;
+    REAL range2high;
+  END;
 END;

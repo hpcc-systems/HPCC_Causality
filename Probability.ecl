@@ -38,7 +38,7 @@ EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING c
     // This is a module-level initialized ProbSpace.  Initialization happens when
     // The first probability function is called.  At that point, the dataset
     // is sent to each node.
-    SHARED PS := ProbSpace.Init(ds, varNames, categoricals);
+    EXPORT PS := ProbSpace.Init(ds, varNames, categoricals);
     /**
       * Calculate a series of numerical probabilities.
       *
