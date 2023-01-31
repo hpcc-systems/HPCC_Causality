@@ -17,6 +17,7 @@ EXPORT viz := MODULE
         STRING varName;
         SET OF REAL numVals;
         SET OF STRING strVals;
+        BOOLEAN isList := False;
     END;
 
     SHARED ParseResults := RECORD
@@ -61,11 +62,14 @@ EXPORT viz := MODULE
                     bProbSpecs = []
                     bpVars = vars[len(gvars):]
                     for varSpec in bpVars:
-                        var, numVals, strVals = varSpec
+                        var, numVals, strVals, isList = varSpec                        
                         if strVals:
                             args = tuple(strVals)
                         else:
                             args = tuple(numVals)
+                        if isList:
+                            # prepend a designator so that we know it's a list.
+                            args = ('__list__',) + args
                         gitem = ('n/a',) + args
                         bProbSpecs.append(gitem)
                     # Extend each row of the grid with these fixed terms.
@@ -89,9 +93,12 @@ EXPORT viz := MODULE
                                     val = negInf
                             strVal = ''
                             if PS.isStringVal(var):
-                                strVal = PS.numToStr(var, val)
+                                if type(val) != type(''):
+                                    strVal = PS.numToStr(var, val)
+                                else:
+                                    strVal = val
                                 val = 0.0
-                            elif val == 'n/a':
+                            if val == 'n/a':
                                 strVal = val
                                 val = 0.0
                             val = float(val)
@@ -134,6 +141,9 @@ EXPORT viz := MODULE
                     if i < len(varSpecs):
                         varSpec = varSpecs[i]
                         args = varSpec[1:]
+                        if args[0] == '__list__': # Special case to detect list items.
+                            listItems = tuple(args[1:])
+                            args = (listItems,)  # Put the tuple in the first arg.
                         spec = (var, ) + args
                         nom = str(varSpec[0])
                         if nom != 'n/a':
@@ -142,6 +152,7 @@ EXPORT viz := MODULE
                     else:
                         spec = (var,)
                     allSpecs.append(spec)
+                
                 rangesTup = (0.0, 0.0, 0.0, 0.0)
                 if queryType == 'prob':
                     targets = allSpecs
@@ -154,6 +165,7 @@ EXPORT viz := MODULE
                 elif queryType == 'bprob':
                     targets = allSpecs[-1:]
                     conds = allSpecs[:-1]
+                    #assert False, 'bprob targs = ' + str(targets) + ', conds = ' + str(conds)
                     result = PS.P(targets, conds)
                 elif queryType == 'expct':
                     targets = allSpecs[-1:]
@@ -205,13 +217,18 @@ EXPORT viz := MODULE
                 for spec in specs:
                     var = spec[0]
                     args = list(spec[1:])
+                    isList = False
+                    if args and type(args[0]) == type((0,)):
+                        # It's a list.  Pull out the individual elements.
+                        args = list(args[0])
+                        isList = True
                     if args and type(args[0]) == type(''):
                         strArgs = args
                         numArgs = []
                     else:
                         numArgs = [float(a) for a in args]
                         strArgs = []
-                    outSpec = (var, numArgs, strArgs)
+                    outSpec = (var, numArgs, strArgs, isList)
                     outSpecs.append(outSpec)
                 return outSpecs
             targSpecs = formatSpecs(targs)
