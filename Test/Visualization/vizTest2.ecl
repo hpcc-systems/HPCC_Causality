@@ -46,17 +46,19 @@ ds0 := DATASET('llcp.csv', fmt, CSV(HEADING(1)));
 
 hc.AddID(ds0, ds);
 
-dst := ds[1..10000];
+dst := ds;
 
-hc.ToAnyField(dst, dsf, ,'gender,height,weight,income,age,veteran,genhealth');
+hc.ToAnyField(dst, dsf, ,'gender,height,weight,income,age,veteran,genhealth,state');
 
-prob := Probability(dsf, dsf_fields);
+categoricals := ['state', 'smokertype'];
+
+prob := Probability(dsf, dsf_fields, categoricals);
 tests := DATASET([{1, 'P(height <= 66)'}
                 ], nlQuery);
 
 results := prob.Query(tests);
 
-query := 'P(genhealth in [3-good, 4-verygood, 5-excellent] | age)';
+query := '(genhealth in [4,5] | height, gender)';
 
 
 pr := viz.parseQuery(query, prob.PS);
@@ -70,4 +72,4 @@ fg := viz.fillDataGrid(g, ['weight', 'height'], 'bprob', prob.PS);
 
 cd := viz.GetDataGrid(query, prob.PS);
 //OUTPUT(cd);
-//viz.Plot(['E(height | weight)',query], prob.PS);
+viz.Plot(['E(height | weight)',query], prob.PS);

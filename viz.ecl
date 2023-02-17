@@ -27,12 +27,12 @@ EXPORT viz := MODULE
         DATASET(ParseVar) interventions;
     END;
 
-    EXPORT DATASET(ChartGrid) GetGrid(DATASET(ParseResults) presults, UNSIGNED ps) := EMBED(Python: globalscope(globalScope), persist('query'))
+    EXPORT DATASET(ChartGrid) getGrid(DATASET(ParseResults) presults, UNSIGNED ps) := EMBED(Python: globalscope(globalScope), persist('query'))
         from because.visualization import grid2 as grid
-        assert 'PS' in globals(), 'Viz.GetGrid: PS is not initialized.'
         negInf = -9999999
         inf = 9999999
         try:
+            assert 'PS' in globals(), 'PS is not initialized.'
             for result in presults:
                 qtype, targs, conds, intervs = result
                 if qtype in ['prob', 'cprob']:
@@ -108,14 +108,15 @@ EXPORT viz := MODULE
                     i += 1
         except:
             from because.hpcc_utils import format_exc
-            assert False, format_exc.format('viz.GetGrid')
-    ENDEMBED;
+            raise RuntimeError(format_exc.format('viz.getGrid'))
+
+    ENDEMBED; // GetGrid
 
     EXPORT STREAMED DATASET(ChartData) fillDataGrid(STREAMED DATASET(ChartGrid) grid, SET OF STRING vars, STRING queryType, UNSIGNED ps) := 
             EMBED(Python: globalscope(globalScope), persist('query'), activity)
-        assert 'PS' in globals(), 'Viz.fillDataGrid: PS is not initialized.'
         ranges = [5, 16, 84, 95]
         try:
+            assert 'PS' in globals(), 'PS is not initialized.'
             for rec in grid:
                 varSpecs = []
                 terms = []
@@ -152,7 +153,6 @@ EXPORT viz := MODULE
                     else:
                         spec = (var,)
                     allSpecs.append(spec)
-                
                 rangesTup = (0.0, 0.0, 0.0, 0.0)
                 if queryType == 'prob':
                     targets = allSpecs
@@ -185,13 +185,13 @@ EXPORT viz := MODULE
                 yield (id,) + tuple(gridVals) + rangesTup
         except:
             from because.hpcc_utils import format_exc
-            assert False, format_exc.format('viz.fillDataGrid')
-    ENDEMBED;
+            raise RuntimeError(format_exc.format('viz.fillDataGrid'))
+    ENDEMBED; // fillDataGrid
 
     EXPORT DATASET(ParseResults) parseQuery(STRING query, UNSIGNED ps) := EMBED(Python: globalscope(globalScope), persist('query'))
         from because.hpcc_utils.parseQuery import Parser
-        #try:
-        if True:
+        try:
+            assert 'PS' in globals(), 'PS is not initialized.'
             queries = [query]
             PARSER = Parser()
             specList = PARSER.parse(queries)
@@ -199,23 +199,25 @@ EXPORT viz := MODULE
             cmd, targs, conds, intervs = spec
             qtype = 'unknown'
             if cmd == 'D': # Unbound distribution
-                assert len(conds) <= 1, 'viz.parseQuery: Probability Charts only support zero or one conditional.  Got: ' + query
+                assert len(conds) <= 1, 'Probability Charts only support zero or one conditional.  Got: ' + query
                 if len(conds) == 0:
-                    assert len(targs) <= 2, 'viz.parseQuery: Probability charts only support one or two target variables.'
+                    assert len(targs) <= 2, 'Probability charts only support one or two target variables.'
                     qtype = 'prob'
                 else:
-                    assert len(targs) == 1, 'viz.parseQuery: Probability charts only support a single target and up to one conditional. Got: ' + query
+                    assert len(targs) == 1, 'Probability charts only support a single target and up to one conditional. Got: ' + query
                     qtype = 'cprob'
             elif cmd == 'P': # Probability. Treat as Bound Probability.
                 qtype = 'bprob'
-                assert len(conds) > 0 and len(conds) <= 2 , 'viz.parseQuery: Bound Probability Charts require one or two conditionals. Got: ' + query
+                assert len(conds) > 0 and len(conds) <= 2 , 'Bound Probability Charts require one or two conditionals. Got: ' + query
             elif cmd == 'E': # Expectation
                 qtype = 'expct'
-                assert len(conds) > 0 and len(conds) <= 2 and len(targs) == 1, 'viz.parseQuery: Expectation Charts only support a single target and one or two conditionals. Got: ' + query
+                assert len(conds) > 0 and len(conds) <= 2 and len(targs) == 1, 'Expectation Charts only support a single target and one or two conditionals. Got: ' + query
+            allVars = PS.getVarNames()
             def formatSpecs(specs):
                 outSpecs = []
                 for spec in specs:
                     var = spec[0]
+                    assert var in allVars, 'Variable name ' + var + ' is not valid. Valid variable names are: ' + str(allVars)
                     args = list(spec[1:])
                     isList = False
                     if args and type(args[0]) == type((0,)):
@@ -234,12 +236,11 @@ EXPORT viz := MODULE
             targSpecs = formatSpecs(targs)
             condSpecs = formatSpecs(conds)
             intervSpecs = formatSpecs(intervs)
-            #assert False, str((qtype, targSpecs, condSpecs, intervSpecs))
             yield (qtype, targSpecs, condSpecs, intervSpecs)
-        #except:
-        #    from because.hpcc_utils import format_exc
-        #    assert False, format_exc.format('viz.parseQuery')
-    ENDEMBED;
+        except:
+            from because.hpcc_utils import format_exc
+            raise RuntimeError(format_exc.format('viz.parseQuery'))
+    ENDEMBED; // parseQuery
 
     EXPORT SET OF STRING getVarNames(DATASET(ParseResults) presults) := EMBED(Python)
         # Extract variable names from the parse results
@@ -253,22 +254,35 @@ EXPORT viz := MODULE
             return varNames
     ENDEMBED;
 
-    EXPORT DATASET(ChartData) GetDataGrid(STRING query, UNSIGNED PS) := FUNCTION
+    EXPORT DATASET({BOOLEAN val}) needSorting(STRING qtype, SET OF STRING pyvars, UNSIGNED ps) := EMBED(Python: globalscope(globalScope), persist('query'))
+        if qtype == 'prob':
+            return [(False,)]
+        else:
+            # For types other than prob, if the first cond var is categorical,
+            # Then we need to sort.
+            condVar = pyvars[0]
+            assert 'PS' in globals(), 'PS is not initialized.'
+            if PS.isCategorical(condVar):
+                return [(True,)]
+        return [(False,)]
+    ENDEMBED;
+
+    EXPORT DATASET(ChartData) getDataGrid(STRING query, UNSIGNED PS) := FUNCTION
         qresults := parseQuery(query, PS);
         qresult := qresults[1];
         queryType := qresult.qtype;
-        testGrid := GetGrid(qresults, PS);
+        testGrid := getGrid(qresults, PS);
         testGrid_D := DISTRIBUTE(testGrid, id);
         vars := getVarNames(qresults);
         dataGrid := fillDataGrid(testGrid_D, vars, queryType, PS);
-        dataGrid_S := SORT(dataGrid, id);
+        dataGrid_S := IF(needSorting(queryType, vars, PS)[1].val, SORT(dataGrid, y_), SORT(dataGrid, id));
         RETURN dataGrid_S;
     END;
     
     EXPORT DATASET(ChartInfo) fillChartInfo(SET OF STRING vars, STRING query, STRING querytype, STRING dataname, UNSIGNED ps) := 
             EMBED(Python: globalscope(globalScope), persist('query'))
-        assert 'PS' in globals(), 'Viz.fillDataGrid: PS is not initialized.'
         try:
+            assert 'PS' in globals(), 'PS is not initialized.'
             target = vars[-1]
             conds = vars[:-1]
             dims = 2
@@ -317,10 +331,10 @@ EXPORT viz := MODULE
             yield info
         except:
             from because.hpcc_utils import format_exc
-            assert False, format_exc.format('viz.fillChartInfo')
-    ENDEMBED;
+            raise RuntimeError(format_exc.format('viz.fillChartInfo'))
+    ENDEMBED; // fillChartInfo
 
-    EXPORT DATASET(ChartInfo) GetChartInfo(STRING query, STRING dataname, UNSIGNED PS) := FUNCTION
+    EXPORT DATASET(ChartInfo) getChartInfo(STRING query, STRING dataname, UNSIGNED PS) := FUNCTION
         qresults := parseQuery(query, PS);
         qresult := qresults[1];
         queryType := qresult.qtype;
@@ -340,9 +354,9 @@ EXPORT viz := MODULE
             plotNames = []
             plotprefix = '_plot'
             for i in range(len(pyqueries)):
-                tempStr = """_dg{num} := _v.GetDataGrid('{query}', _PS);
+                tempStr = """_dg{num} := _v.getDataGrid('{query}', _PS);
                             OUTPUT(_dg{num}, ALL, NAMED('{prefix}{num}_data'));
-                            _ci{num} := _v.GetChartInfo('{query}', '{prefix}{num}_data', _PS);
+                            _ci{num} := _v.getChartInfo('{query}', '{prefix}{num}_data', _PS);
                             OUTPUT(_ci{num}, ALL, NAMED('{prefix}{num}_meta'));
                             """.format(num = i, prefix = plotprefix, query = pyqueries[i])
                 plotNames.append(plotprefix + str(i) + '_meta')
