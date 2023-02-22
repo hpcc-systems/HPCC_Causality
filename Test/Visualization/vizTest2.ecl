@@ -58,18 +58,18 @@ tests := DATASET([{1, 'P(height <= 66)'}
 
 results := prob.Query(tests);
 
-query := '(genhealth in [4,5] | height, gender)';
-
+query := 'P(genhealth in [4,5] | state)';
+queries := ['P(genhealth in [4,5] | state)', 'Correlation(height, weight, income, genhealth)'];
 
 pr := viz.parseQuery(query, prob.PS);
-OUTPUT(pr);
+//OUTPUT(pr);
 vars := viz.getVarNames(pr);
 //OUTPUT(vars);
-g := viz.GetGrid(pr, prob.PS);
-OUTPUT(g);
-fg := viz.fillDataGrid(g, ['weight', 'height'], 'bprob', prob.PS);
+g := viz.GetHeatmapGrid(pr, prob.PS);
+//OUTPUT(g);
+fg := viz.fillHeatmapGrid(g, ['weight', 'height'], 'dep', prob.PS);
 //OUTPUT(fg);
 
 cd := viz.GetDataGrid(query, prob.PS);
 //OUTPUT(cd);
-viz.Plot(['E(height | weight)',query], prob.PS);
+viz.Plot(queries, prob.PS);

@@ -109,8 +109,65 @@ EXPORT viz := MODULE
         except:
             from because.hpcc_utils import format_exc
             raise RuntimeError(format_exc.format('viz.getGrid'))
-
     ENDEMBED; // GetGrid
+
+    EXPORT DATASET(ChartGrid) getHeatmapGrid(DATASET(ParseResults) presults, UNSIGNED ps) := EMBED(Python: globalscope(globalScope), persist('query'))
+        try:
+            # Return grid of [(var1, var2)], undirected.
+            assert 'PS' in globals(), 'PS is not initialized.'
+            for result in presults:
+                power = 0
+                sensitivity = 5
+                varGrid = []
+                qtype, targs, conds, intervs = result
+                if qtype == 'dep':
+                    power = 0
+                else:
+                    power = 5
+                for i in range(len(targs)):
+                    targ1 = targs[i]
+                    var1 = targ1[0]
+                    for j in range(i+1, len(targs)):
+                        targ2 = targs[j]
+                        var2 = targ2[0]
+                        varGrid.append((var1, var2))
+                for i in range(len(conds)):
+                    # Conditions may include only power and or sensitivity specifications.
+                    spec = conds[i]
+                    var = spec[0]
+                    assert var in ['power', 'sensitivity'] and len(spec == 2) and type(spec[1]) not in [type((0,)), type([])], \
+                        'Correlation and dependence conditional clause may only contain exact matches for power or sensitivity'
+                    value = spec[1]
+                    if var == 'power' and qtype == 'dep':
+                        # Power is always zero for correlation
+                        power = value
+                    elif var == 'sensitivity':
+                        sensitivity = value
+                for i in range(len(varGrid)):
+                    outItems = []
+                    item = varGrid[i]
+                    var1 = item[0]
+                    var2 = item[1]
+                    for j in range(4):
+                        # (var1, var2, power, sensitivity)
+                        val = 0.0
+                        if j == 0:
+                            strVal = var1
+                        elif j == 1:
+                            strVal = var2
+                        elif j == 2:
+                            val = float(power)
+                            strVal = ''
+                        elif j == 3:
+                            val = float(sensitivity)
+                            strVal = ''
+                        outItem = (1,j+1, 1,val, strVal)
+                        outItems.append(outItem)
+                    yield((i+1, outItems))
+        except:
+            from because.hpcc_utils import format_exc
+            raise RuntimeError(format_exc.format('viz.getHeatmapGrid'))
+    ENDEMBED; // getHeatmapGrid
 
     EXPORT STREAMED DATASET(ChartData) fillDataGrid(STREAMED DATASET(ChartGrid) grid, SET OF STRING vars, STRING queryType, UNSIGNED ps) := 
             EMBED(Python: globalscope(globalScope), persist('query'), activity)
@@ -188,6 +245,49 @@ EXPORT viz := MODULE
             raise RuntimeError(format_exc.format('viz.fillDataGrid'))
     ENDEMBED; // fillDataGrid
 
+    EXPORT STREAMED DATASET(ChartData) fillHeatmapGrid(STREAMED DATASET(ChartGrid) grid, SET OF STRING vars, STRING queryType, UNSIGNED ps) := 
+            EMBED(Python: globalscope(globalScope), persist('query'), activity)
+        ranges = [5, 16, 84, 95]
+        try:
+            assert 'PS' in globals(), 'PS is not initialized.'
+            for rec in grid:
+                varSpecs = []
+                terms = []
+                currVar = 0
+                currTerm = 0
+                id, items = rec
+                items.append((0, 0, 0, 0, ''))
+                for item in items:
+                    wi, varid, term, value, textVal = item
+                    if varid != currVar:
+                        if currVar:
+                            varSpecs.append(tuple(terms))
+                        currVar = varid
+                        terms = []
+                    if textVal:
+                        terms.append(textVal)
+                    else:
+                        terms.append(value)
+                rangesTup = (0.0, 0.0, 0.0, 0.0)
+                var1 = varSpecs[0][0]
+                var2 = varSpecs[1][0]
+                power = varSpecs[2][0]
+                sensitivity = varSpecs[3][0]
+                if queryType == 'cor':
+                    result = PS.corrCoef(var1, var2)
+                else:
+                    # Dep(endence)
+                    result = PS.dependence(var1, var2, power=power, sensitivity=sensitivity)
+                gridVals = (var1, var2, str(result))
+                yield (id,) + tuple(gridVals) + rangesTup
+                # Emit records for both directions
+                gridValsR = (var2, var1, str(result))
+                yield (id,) + tuple(gridValsR) + rangesTup
+        except:
+            from because.hpcc_utils import format_exc
+            raise RuntimeError(format_exc.format('viz.fillHeatmipGrid'))
+    ENDEMBED; // fillHeatmapGrid
+
     EXPORT DATASET(ParseResults) parseQuery(STRING query, UNSIGNED ps) := EMBED(Python: globalscope(globalScope), persist('query'))
         from because.hpcc_utils.parseQuery import Parser
         try:
@@ -212,6 +312,10 @@ EXPORT viz := MODULE
             elif cmd == 'E': # Expectation
                 qtype = 'expct'
                 assert len(conds) > 0 and len(conds) <= 2 and len(targs) == 1, 'Expectation Charts only support a single target and one or two conditionals. Got: ' + query
+            elif cmd in ['DEPENDENCE', 'CORRELATION']:
+                # Dependence or correlation heatmap. qtype is 'dep' or 'cor'
+                qtype = cmd.lower()[:3]
+                assert len(targs) >= 2, 'Dependence or correlation heatmaps require at least two target variables'
             allVars = PS.getVarNames()
             def formatSpecs(specs):
                 outSpecs = []
@@ -271,10 +375,16 @@ EXPORT viz := MODULE
         qresults := parseQuery(query, PS);
         qresult := qresults[1];
         queryType := qresult.qtype;
-        testGrid := getGrid(qresults, PS);
+        testGrid := IF(queryType = 'dep' OR queryType = 'cor',
+            getHeatmapGrid(qresults, PS), 
+            getGrid(qresults, PS));
+        //testGrid := getGrid(qresults, PS);
         testGrid_D := DISTRIBUTE(testGrid, id);
         vars := getVarNames(qresults);
-        dataGrid := fillDataGrid(testGrid_D, vars, queryType, PS);
+        dataGrid := IF(queryType = 'dep' OR queryType = 'cor',
+            fillHeatmapGrid(testGrid_D, vars, queryType, PS), 
+            fillDataGrid(testGrid_D, vars, queryType, PS));
+        //dataGrid := fillDataGrid(testGrid_D, vars, queryType, PS);
         dataGrid_S := IF(needSorting(queryType, vars, PS)[1].val, SORT(dataGrid, y_), SORT(dataGrid, id));
         RETURN dataGrid_S;
     END;
@@ -327,6 +437,13 @@ EXPORT viz := MODULE
                     xlabel = conds[0]
                     ylabel = conds[1]
                     zlabel = 'E(' + target + ' | ' + conds[0] + ', ' + conds[1]+ ')'
+                info = (dataname, querytype, dims, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
+            elif querytype in ['dep', 'cor']:
+                # Dependence or correlation heatmap
+                dims = 3
+                xlabel = ''
+                ylabel = ''
+                zlabel = query
                 info = (dataname, querytype, dims, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
             yield info
         except:
