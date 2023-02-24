@@ -14,7 +14,8 @@ PDist := Types.Distribution;
 ValidationReport := Types.ValidationReport;
 ProbQuery := Types.ProbQuery;
 cMetrics := Types.cMetrics;
-DiscoveryReport := Types.DiscoveryReport;
+ScanReport := Types.ScanReport;
+DiscResult := Types.DiscoveryResult;
 
 globalScope := 'probspace' + node + '.ecl';
 
@@ -32,6 +33,10 @@ varMetrics := RECORD
     DATASET(varMetricsItem) directions;
 END;
 
+varsRec := RECORD
+    SET OF STRING vars;
+END;
+
 /**
   * Internal Module to provide access to the Causality methods of the python "Because.causality" package.
   *
@@ -45,9 +50,9 @@ EXPORT cModel := MODULE
       * It returns an UNSIGNED, which is passed on to all other functions to make sure
       * that Init is run before them.
       */
-    EXPORT UNSIGNED Init(DATASET(cModelTyp) mod, DATASET(NumericField) ds) := FUNCTION
+    EXPORT UNSIGNED Init(DATASET(cModelTyp) mod, UNSIGNED PS) := FUNCTION
 
-        STREAMED DATASET(dummyRec) pyInit(STREAMED DATASET(NumericField) ds, STREAMED DATASET(cModelTyp) mods,
+        STREAMED DATASET(dummyRec) pyInit(STREAMED DATASET(cModelTyp) mods, UNSIGNED pyps,
                             UNSIGNED pynode, UNSIGNED pynnodes) :=
                             EMBED(Python: globalscope(globalScope), persist('query'), activity)
             from because.causality import cgraph
@@ -62,6 +67,7 @@ EXPORT cModel := MODULE
                 globlock.release()
                 return [(1,)]
             try:
+                assert 'PS' in globals(), 'Causality.Init: PS is not initialized.'
                 # Save the node number and the number of nodes
                 NODE = pynode
                 NNODES = pynnodes
@@ -84,13 +90,7 @@ EXPORT cModel := MODULE
                         RVs.append(newrv)
                 ids = []
                 lastId = None
-                for rec in ds:
-                    wi, id, num, val = rec
-                    DS[varMap[num]].append(val)
-                    if id != lastId:
-                        ids.append(id)
-                        lastId = id
-                CM = cgraph.cGraph(RVs, DS)
+                CM = cgraph.cGraph(RVs, ps=PS)
                 # Release the global lock
                 globlock.release()
                 return [(1,)]
@@ -100,11 +100,9 @@ EXPORT cModel := MODULE
                 globlock.release()
                 assert False, format_exc.format('cModel.Init')
         ENDEMBED;
-        ds_distr := DISTRIBUTE(ds, ALL);
-        ds_S := SORT(NOCOMBINE(ds_distr), id, number, LOCAL);
         mod_distr := DISTRIBUTE(mod, ALL);
-        cmds := pyInit(ds_S, mod_distr, node, nNodes);
-        cm := SUM(cmds, id);
+        cmds := pyInit(mod_distr, PS, node, nNodes);
+        cm := MAX(cmds, id);
         RETURN cm;
     END;
     /**
@@ -312,13 +310,19 @@ EXPORT cModel := MODULE
       * The workload is automatically allocated among the nodes, so that each variable pairing
       * is executed on only one node.
       */
-    EXPORT DATASET(Cache) pyGetCache(DATASET(dummyRec) dummy, UNSIGNED cm, UNSIGNED pynode, UNSIGNED pynnodes, UNSIGNED order=3, UNSIGNED pwr=1) := 
+    EXPORT DATASET(Cache) pyGetCache(STREAMED DATASET(varsRec) vars, UNSIGNED cm, UNSIGNED pynode, UNSIGNED pynnodes, UNSIGNED order=3, UNSIGNED pwr=1) := 
                 EMBED(Python: globalscope(globalScope), persist('query'), activity)
         assert 'CM' in globals(), 'cModel.getCache: CM is not initialized.'
         try:
             indCache = {}
             dirCache = {}
-            vars = CM.varNames()
+            vars = []
+            for rec in vars:
+                # Should be exactly one RECORD
+                vars = rec.vars
+            if not vars:
+                # If not supplied, use all vars.
+                vars = CM.prob.getVarNames()
             item = 0
             for i in range(len(vars)):
                 v1 = vars[i]
@@ -351,20 +355,21 @@ EXPORT cModel := MODULE
       * The work is automatically distributed among nodes using pyGetCache (above).
       *
       */
-    EXPORT getCache(UNSIGNED cm, UNSIGNED order=3, UNSIGNED pwr=1) := FUNCTION
-        d := DATASET([], dummyRec);
-        cache := pyGetCache(d, cm, node, nnodes, order, pwr);
+    EXPORT getCache(SET OF STRING vars, UNSIGNED cm, UNSIGNED order=3, UNSIGNED pwr=1) := FUNCTION
+        // Create a vars record on each node
+        varsDat := DATASET([{vars}], varsRec, LOCAL);
+        cache := pyGetCache(varsDat, cm, node, nnodes, order, pwr);
         return cache;
     END;
 
     /**
-      * Embedded function to execute a causal scan (discovery) on a single node.
+      * Embedded function to execute a causal scan  on a single node.
       *
       * The cache parameter allows much of the heavy lifting to be done in parallel
       * using getCache (above).  There is still quite a bit of work that is done on a single
       * node and cannot be distributed.
       */
-    SHARED DiscoveryReport pyDiscoverModel(UNSIGNED pwr, UNSIGNED cm, DATASET(cache) pycache=DATASET([], cache)) := 
+    SHARED ScanReport pyScanModel(UNSIGNED pwr, UNSIGNED cm, DATASET(cache) pycache=DATASET([], cache)) := 
             EMBED(Python: globalscope(globalScope), persist('query'))
         from because.causality import cscan
         assert 'CM' in globals(), 'cModel.pyDiscoverModel: CM is not initialized.'
@@ -413,18 +418,81 @@ EXPORT cModel := MODULE
             from because.hpcc_utils import format_exc
             assert False, format_exc.format('cModel.pyDiscoverModel')
 
-    ENDEMBED;
+    ENDEMBED; // PyScanModel
+
+        /**
+      * Embedded function to execute a causal discovery  on a single node.
+      *
+      * The cache parameter allows much of the heavy lifting to be done in parallel
+      * using getCache (above).  There is still quite a bit of work that is done on a single
+      * node and cannot be distributed.
+      */
+    SHARED DATASET(DiscResult) pyDiscModel(SET OF STRING vars, UNSIGNED pwr, REAL sensitivity, UNSIGNED cm, DATASET(cache) pycache=DATASET([], cache)) := 
+            EMBED(Python: globalscope(globalScope), persist('query'))
+        from because.causality import cdisc
+        assert 'CM' in globals(), 'cModel.pyDiscModel: CM is not initialized.'
+        try:
+            dirCache = {}
+            for rec in pycache:
+                dirC = rec[1]
+                for item in dirC:
+                    key, val = item
+                    cacheKey = tuple(key)
+                    dirCache[cacheKey] = val
+            if dirCache:
+                CM.setDirCache(dirCache)
+            ps = CM.prob  # Get the probspace instance from CM
+            #assert False, 'ps.N = ' + str(ps.N)
+            if not vars:
+                vars = ps.getVarNames()
+            newCM = cdisc.discover(ps, vars, power=pwr, sensitivity=sensitivity)
+            edges = newCM.getEdges()
+            edgeNodes = {}
+            for edge in edges:
+                cause, effect = edge
+                edgeNodes[cause] = True
+                edgeNodes[effect] = True
+                strength = newCM.getEdgeProp(edge, 'dir_rho')
+                yield (cause, effect, float(strength))
+            # If any variable was not in an edge, add a pseudo-edge, so
+            # that it shows in the graph.
+            for var in vars:
+                edgeVar = edgeNodes.get(var, None)
+                if edgeVar is None:
+                    # Not in any edge
+                    yield(var, '', 0.0)
+        except:
+            from because.hpcc_utils import format_exc
+            assert False, format_exc.format('cModel.pyDiscModel')
+
+    ENDEMBED; // pyDiscModel
+
     /**
-      * Function to execute a causal scan (discovery) on a single node.
+      * Function to execute a causal scan  on a single node.
       *
       * The cache parameter allows much of the heavy lifting to be done in parallel
       * using getCache (above).  There is still quite a bit of work that is done on a single
       * node and cannot be distributed.
       * Uses pyDiscoverModel above to communicate with the python package.
       */
-    EXPORT DiscoveryReport DiscoverModel(UNSIGNED pwr, UNSIGNED cm) := FUNCTION
-        cache := getCache(CM, pwr:=pwr);
-        rpt := pyDiscoverModel(pwr, cm, cache);
+    EXPORT ScanReport ScanModel(UNSIGNED pwr, UNSIGNED cm) := FUNCTION
+        vars := [];
+        cache := getCache(vars, CM, pwr:=pwr);
+        rpt := pyScanModel(pwr, cm, cache);
         RETURN rpt;
+    END;
+
+    /**
+      * Function to execute a discovery on a single node.
+      *
+      * The cache parameter allows much of the heavy lifting to be done in parallel
+      * using getCache (above).  There is still quite a bit of work that is done on a single
+      * node and cannot be distributed.
+      * Uses pyDiscoverModel above to communicate with the python package.
+      */
+    EXPORT DATASET(DiscResult) DiscoverModel(SET OF STRING vars, REAL pwr, REAL sensitivity, UNSIGNED cm) := FUNCTION
+        //cache := getCache(vars, cm, pwr:=pwr);
+        rslt := pyDiscModel(vars, pwr, sensitivity, cm);
+        RETURN rslt;
     END;
 END;

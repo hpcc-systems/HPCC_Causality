@@ -2,11 +2,13 @@ IMPORT Python3 AS Python;
 IMPORT Std.System.Thorlib;
 IMPORT $ AS HC;
 IMPORT HC.Types;
+//IMPORT HC.Causality;
 
 AnyField := Types.AnyField;
 ChartGrid := Types.ChartGrid;
 ChartData := Types.ChartData;
 ChartInfo := Types.ChartInfo;
+cModelTyp := Types.cModel;
 
 node := Thorlib.node();
 globalScope := 'probspace' + node + '.ecl';
@@ -288,10 +290,24 @@ EXPORT viz := MODULE
             raise RuntimeError(format_exc.format('viz.fillHeatmipGrid'))
     ENDEMBED; // fillHeatmapGrid
 
+    EXPORT STREAMED DATASET(ChartData) fillDiscGrid(SET OF STRING vars, UNSIGNED ps) := FUNCTION
+        cm := HC.Causality(DATASET([], cModelTyp), ps);
+        disc := cm.DiscoverModel(vars);
+        grid := PROJECT(disc, TRANSFORM(ChartData,
+                SELF.id := COUNTER,
+                SELF.x_ := LEFT.causeVar,
+                SELF.y_ := LEFT.effectVar,
+                SELF.z_ := (STRING)LEFT.strength));
+        RETURN grid;
+    END; // fillDiscGrid
+
     EXPORT DATASET(ParseResults) parseQuery(STRING query, UNSIGNED ps) := EMBED(Python: globalscope(globalScope), persist('query'))
         from because.hpcc_utils.parseQuery import Parser
         try:
             assert 'PS' in globals(), 'PS is not initialized.'
+            allVars = PS.getVarNames()[:]
+            if 'id' in allVars:
+                allVars.remove('id') # Don't consider the id field.
             queries = [query]
             PARSER = Parser()
             specList = PARSER.parse(queries)
@@ -314,9 +330,18 @@ EXPORT viz := MODULE
                 assert len(conds) > 0 and len(conds) <= 2 and len(targs) == 1, 'Expectation Charts only support a single target and one or two conditionals. Got: ' + query
             elif cmd in ['DEPENDENCE', 'CORRELATION']:
                 # Dependence or correlation heatmap. qtype is 'dep' or 'cor'
+                maxVars = 25
                 qtype = cmd.lower()[:3]
-                assert len(targs) >= 2, 'Dependence or correlation heatmaps require at least two target variables'
-            allVars = PS.getVarNames()
+                if len(targs) == 0:
+                    targs = [(var,) for var in allVars][:maxVars]
+                assert len(targs) >= 2 and len(targs) <= maxVars, 'Dependence or correlation heatmaps require between 2 and ' + str(maxVars) + ' variables.' + \
+                    '  An empty set indicates all variables in dataset.'
+            elif cmd == 'CMODEL':
+                qtype = 'cmodel'
+                if len(targs) == 0:
+                    targs = [(var,) for var in allVars]
+                assert len(targs) >= 2, 'Causal model requires at least two variables.'
+
             def formatSpecs(specs):
                 outSpecs = []
                 for spec in specs:
@@ -359,10 +384,10 @@ EXPORT viz := MODULE
     ENDEMBED;
 
     EXPORT DATASET({BOOLEAN val}) needSorting(STRING qtype, SET OF STRING pyvars, UNSIGNED ps) := EMBED(Python: globalscope(globalScope), persist('query'))
-        if qtype == 'prob':
+        if qtype == 'prob' or qtype == 'cdisc' or qtype == 'dep' or qtype == 'cor':
             return [(False,)]
         else:
-            # For types other than prob, if the first cond var is categorical,
+            # For types other than prob or cdisc or dep or cor, if the first cond var is categorical,
             # Then we need to sort.
             condVar = pyvars[0]
             assert 'PS' in globals(), 'PS is not initialized.'
@@ -376,14 +401,16 @@ EXPORT viz := MODULE
         qresult := qresults[1];
         queryType := qresult.qtype;
         testGrid := IF(queryType = 'dep' OR queryType = 'cor',
-            getHeatmapGrid(qresults, PS), 
-            getGrid(qresults, PS));
+            getHeatmapGrid(qresults, PS), IF(queryType = 'cmodel',
+            DATASET([], ChartGrid), // Don't need grid for cmodel
+            getGrid(qresults, PS)));
         //testGrid := getGrid(qresults, PS);
         testGrid_D := DISTRIBUTE(testGrid, id);
         vars := getVarNames(qresults);
         dataGrid := IF(queryType = 'dep' OR queryType = 'cor',
-            fillHeatmapGrid(testGrid_D, vars, queryType, PS), 
-            fillDataGrid(testGrid_D, vars, queryType, PS));
+            fillHeatmapGrid(testGrid_D, vars, queryType, PS), IF(queryType = 'cmodel',
+            fillDiscGrid(vars, PS),
+            fillDataGrid(testGrid_D, vars, queryType, PS)));
         //dataGrid := fillDataGrid(testGrid_D, vars, queryType, PS);
         dataGrid_S := IF(needSorting(queryType, vars, PS)[1].val, SORT(dataGrid, y_), SORT(dataGrid, id));
         RETURN dataGrid_S;
@@ -440,6 +467,12 @@ EXPORT viz := MODULE
                 info = (dataname, querytype, dims, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
             elif querytype in ['dep', 'cor']:
                 # Dependence or correlation heatmap
+                dims = 3
+                xlabel = ''
+                ylabel = ''
+                zlabel = query
+                info = (dataname, querytype, dims, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
+            elif querytype == 'cmodel':
                 dims = 3
                 xlabel = ''
                 ylabel = ''

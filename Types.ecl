@@ -291,7 +291,7 @@ EXPORT Types := MODULE
     END;
 
     /**
-      * Results of the DiscoverModel function.
+      * Results of the ScanModel function.
       *
       * Provides the information about what was discovered
       * from analyzing the dataset.
@@ -305,13 +305,19 @@ EXPORT Types := MODULE
       * @field VarGraph A list of variables and the set of parents for
       *   each, representing a Directed Acyclic Graph (DAG) of variable relationships.
       */
-    EXPORT DiscoveryReport := RECORD
+    EXPORT ScanReport := RECORD
       SET OF STRING Exos;
       SET OF STRING Clusters;
       DATASET(SetMembers) ClustMembers;
       DATASET(SetMembers) ClustGraph;
       DATASET(SetMembers) VarGraph;
     END;
+
+  EXPORT DiscoveryResult := RECORD
+    STRING causeVar;
+    STRING effectVar;
+    REAL strength;
+  END;
 
   EXPORT ChartGrid := RECORD
     UNSIGNED id;

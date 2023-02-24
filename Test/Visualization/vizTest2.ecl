@@ -59,7 +59,7 @@ tests := DATASET([{1, 'P(height <= 66)'}
 results := prob.Query(tests);
 
 query := 'P(genhealth in [4,5] | state)';
-queries := ['P(genhealth in [4,5] | state)', 'Correlation(height, weight, income, genhealth)'];
+queries := ['P(genhealth in [4,5] | state)', 'CModel(gender,height, weight, age)'];
 
 pr := viz.parseQuery(query, prob.PS);
 //OUTPUT(pr);

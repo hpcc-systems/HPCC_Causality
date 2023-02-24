@@ -8,7 +8,8 @@ validationReport := Types.validationReport;
 cMetrics := Types.cMetrics;
 ProbQuery := Types.ProbQuery;
 Distr := Types.Distribution;
-DiscoveryReport := Types.DiscoveryReport;
+ScanReport := Types.ScanReport;
+DiscResult := Types.DiscoveryResult;
 
 NumericField := cTypes.NumericField;
 
@@ -34,8 +35,8 @@ NumericField := cTypes.NumericField;
   * @see ML_Core.Types.NumericField
   *
   */
-EXPORT Causality(DATASET(cModelTyp) mod, DATASET(NumericField) dat)  := MODULE
-    SHARED CM := cModel.Init(mod, dat);
+EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
+    SHARED CM := cModel.Init(mod, PS);
     /**
       * Validate the causal model relative to the data.
       *
@@ -163,8 +164,14 @@ EXPORT Causality(DATASET(cModelTyp) mod, DATASET(NumericField) dat)  := MODULE
       *
       * 
       */
-    EXPORT DATASET(DiscoveryReport) DiscoverModel( UNSIGNED pwr=1) := FUNCTION
-        discRpt := cModel.DiscoverModel(pwr, CM);
-        RETURN discRpt;
+    EXPORT DATASET(ScanReport) ScanModel( UNSIGNED pwr=1) := FUNCTION
+        rpt := cModel.ScanModel(pwr, CM);
+        RETURN rpt;
     END;
+
+    EXPORT DATASET(DiscResult) DiscoverModel(SET OF STRING vars,  REAL pwr=5, REAL sensitivity=10) := FUNCTION
+      result := cModel.DiscoverModel(vars, pwr, sensitivity, CM);
+      RETURN result;
+    END;
+    
 END;
