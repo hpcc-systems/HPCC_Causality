@@ -247,7 +247,8 @@ EXPORT viz := MODULE
             raise RuntimeError(format_exc.format('viz.fillDataGrid'))
     ENDEMBED; // fillDataGrid
 
-    EXPORT STREAMED DATASET(ChartData) fillHeatmapGrid(STREAMED DATASET(ChartGrid) grid, SET OF STRING vars, STRING queryType, UNSIGNED ps) := 
+    EXPORT STREAMED DATASET(ChartData) fillHeatmapGrid(STREAMED DATASET(ChartGrid) grid,
+            SET OF STRING vars, STRING queryType, DATASET(parseVar) conds, UNSIGNED ps) := 
             EMBED(Python: globalscope(globalScope), persist('query'), activity)
         ranges = [5, 16, 84, 95]
         try:
@@ -290,14 +291,25 @@ EXPORT viz := MODULE
             raise RuntimeError(format_exc.format('viz.fillHeatmipGrid'))
     ENDEMBED; // fillHeatmapGrid
 
-    EXPORT STREAMED DATASET(ChartData) fillDiscGrid(SET OF STRING vars, UNSIGNED ps) := FUNCTION
+    EXPORT STREAMED DATASET(ChartData) fillDiscGrid(SET OF STRING vars, DATASET(parseVar) conds, UNSIGNED ps) := FUNCTION
         cm := HC.Causality(DATASET([], cModelTyp), ps);
-        disc := cm.DiscoverModel(vars);
+        // Extract $power, $sensitivity, and $depth from conds
+        pwrDat := conds(varName='$power');
+        sensDat := conds(varName='$sensitivity');
+        depthDat := conds(varName='$depth');
+        pwr := IF(COUNT(pwrDat) > 0, pwrDat[1].numVals[1], 5);
+        sens := IF(COUNT(sensDat) > 0, sensDat[1].numVals[1], 10);
+        depth := IF(COUNT(depthDat) > 0, depthDat[1].numVals[1], 2);
+        disc := cm.DiscoverModel(vars, pwr:=pwr, sensitivity:=sens, depth:=depth);
+        // x_ is the cause variable; y_ is the effect, and z_ is the directional strength.
+        // Use range1low and range1high for correlation and MDE respectively.
         grid := PROJECT(disc, TRANSFORM(ChartData,
                 SELF.id := COUNTER,
                 SELF.x_ := LEFT.causeVar,
                 SELF.y_ := LEFT.effectVar,
-                SELF.z_ := (STRING)LEFT.strength));
+                SELF.z_ := (STRING)LEFT.strength,
+                SELF.range1low := LEFT.correlation,
+                SELF.range1high := LEFT.MDE));
         RETURN grid;
     END; // fillDiscGrid
 
@@ -346,7 +358,7 @@ EXPORT viz := MODULE
                 outSpecs = []
                 for spec in specs:
                     var = spec[0]
-                    assert var in allVars, 'Variable name ' + var + ' is not valid. Valid variable names are: ' + str(allVars)
+                    assert var[0] == '$' or var in allVars, 'Variable name ' + var + ' is not valid. Valid variable names are: ' + str(allVars)
                     args = list(spec[1:])
                     isList = False
                     if args and type(args[0]) == type((0,)):
@@ -378,8 +390,12 @@ EXPORT viz := MODULE
             qtype, targs, conds, intervs = result
             tvars = [s[0] for s in targs]
             cvars = [s[0] for s in conds]
-            # Put conditionals first.
-            varNames = cvars + tvars
+            if qtype in ['cmodel', 'correlation', 'dependence']:
+                # For these types, don't include the conditionals
+                varNames = tvars
+            else:
+                # Put conditionals first.
+                varNames = cvars + tvars
             return varNames
     ENDEMBED;
 
@@ -407,9 +423,10 @@ EXPORT viz := MODULE
         //testGrid := getGrid(qresults, PS);
         testGrid_D := DISTRIBUTE(testGrid, id);
         vars := getVarNames(qresults);
+        conds := qresult.conds; // fillDatagrid and fillDiscGrid need the conditional clause.
         dataGrid := IF(queryType = 'dep' OR queryType = 'cor',
-            fillHeatmapGrid(testGrid_D, vars, queryType, PS), IF(queryType = 'cmodel',
-            fillDiscGrid(vars, PS),
+            fillHeatmapGrid(testGrid_D, vars, queryType, conds, PS), IF(queryType = 'cmodel',
+            fillDiscGrid(vars, conds, PS),
             fillDataGrid(testGrid_D, vars, queryType, PS)));
         //dataGrid := fillDataGrid(testGrid_D, vars, queryType, PS);
         dataGrid_S := IF(needSorting(queryType, vars, PS)[1].val, SORT(dataGrid, y_), SORT(dataGrid, id));
@@ -425,6 +442,7 @@ EXPORT viz := MODULE
             dims = 2
             if querytype == 'prob':
                 dims = 2
+                title = 'Probabiity Distribution of ' + target
                 xlabel = 'x'
                 ylabel = 'P(' + target + ' = x)'
                 mean = PS.E(target)
@@ -434,14 +452,17 @@ EXPORT viz := MODULE
                 r1low = d.percentile(ranges[1])
                 r1high = d.percentile(ranges[2])
                 r2high = d.percentile(ranges[3])
-                info = (dataname, querytype, dims, xlabel, ylabel, '', mean, r1low, r1high, r2low, r2high)
+                info = (dataname, querytype, dims, title, xlabel, ylabel, '', mean, r1low, r1high, r2low, r2high)
             elif querytype == 'cprob':
                 dims = 3
+                title = 'Probability Plot -- ' + query
                 xlabel = conds[0]
                 ylabel = 'x'
                 zlabel = 'P(' + target + ' = x | ' + conds[0] + ')'
-                info = (dataname, querytype, dims, xlabel, ylabel, '', 0.0, 0.0, 0.0, 0.0, 0.0)
+                info = (dataname, querytype, dims, title, xlabel, ylabel, '', 0.0, 0.0, 0.0, 0.0, 0.0)
             elif querytype == 'bprob':
+                dims = 2
+                title = 'Probability Plot -- ' + query
                 zlabel = ''
                 if len(conds) == 1:
                     dims = 2
@@ -452,8 +473,9 @@ EXPORT viz := MODULE
                     xlabel = conds[0]
                     ylabel = conds[1]
                     zlabel = query
-                info = (dataname, querytype, dims, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
+                info = (dataname, querytype, dims, title, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
             elif querytype == 'expct':
+                title = 'Expectation Plot -- ' + query
                 zlabel = ''
                 if len(conds) == 1:
                     dims = 2
@@ -464,20 +486,25 @@ EXPORT viz := MODULE
                     xlabel = conds[0]
                     ylabel = conds[1]
                     zlabel = 'E(' + target + ' | ' + conds[0] + ', ' + conds[1]+ ')'
-                info = (dataname, querytype, dims, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
+                info = (dataname, querytype, dims, title, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
             elif querytype in ['dep', 'cor']:
                 # Dependence or correlation heatmap
+                if querytype == 'dep':
+                    title = 'Dependency Heatmap'
+                else:
+                    title = 'Correlation Heatmap'
                 dims = 3
                 xlabel = ''
                 ylabel = ''
                 zlabel = query
-                info = (dataname, querytype, dims, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
+                info = (dataname, querytype, dims, title, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
             elif querytype == 'cmodel':
                 dims = 3
+                title = 'Causal Model'
                 xlabel = ''
                 ylabel = ''
                 zlabel = query
-                info = (dataname, querytype, dims, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
+                info = (dataname, querytype, dims, title, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
             yield info
         except:
             from because.hpcc_utils import format_exc

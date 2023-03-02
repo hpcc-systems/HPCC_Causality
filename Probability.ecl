@@ -7,6 +7,7 @@ IMPORT HPCC_Causality.internal.ProbSpace;
 ProbQuery := Types.ProbQuery;
 ProbSpec := Types.ProbSpec;
 Distr := Types.Distribution;
+DatasetSummary := Types.DatasetSummary;
 NumericField := cTypes.NumericField;
 AnyField := Types.AnyField;
 nlQuery := Types.nlQuery;
@@ -39,6 +40,13 @@ EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING c
     // The first probability function is called.  At that point, the dataset
     // is sent to each node.
     EXPORT PS := ProbSpace.Init(ds, varNames, categoricals);
+    /**
+      * Summary
+      */
+    EXPORT DatasetSummary Summary() := FUNCTION
+      RETURN ProbSpace.getSummary(PS);
+    END;
+    
     /**
       * Calculate a series of numerical probabilities.
       *

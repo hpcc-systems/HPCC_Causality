@@ -169,8 +169,8 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
         RETURN rpt;
     END;
 
-    EXPORT DATASET(DiscResult) DiscoverModel(SET OF STRING vars,  REAL pwr=5, REAL sensitivity=10) := FUNCTION
-      result := cModel.DiscoverModel(vars, pwr, sensitivity, CM);
+    EXPORT DATASET(DiscResult) DiscoverModel(SET OF STRING vars,  REAL pwr=5, REAL sensitivity=10, UNSIGNED depth=2) := FUNCTION
+      result := cModel.DiscoverModel(vars, pwr, sensitivity, depth, CM);
       RETURN result;
     END;
     

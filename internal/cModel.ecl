@@ -427,10 +427,11 @@ EXPORT cModel := MODULE
       * using getCache (above).  There is still quite a bit of work that is done on a single
       * node and cannot be distributed.
       */
-    SHARED DATASET(DiscResult) pyDiscModel(SET OF STRING vars, UNSIGNED pwr, REAL sensitivity, UNSIGNED cm, DATASET(cache) pycache=DATASET([], cache)) := 
+    SHARED DATASET(DiscResult) pyDiscModel(SET OF STRING vars, REAL pwr, REAL sensitivity, UNSIGNED depth, UNSIGNED cm, DATASET(cache) pycache=DATASET([], cache)) := 
             EMBED(Python: globalscope(globalScope), persist('query'))
         from because.causality import cdisc
         assert 'CM' in globals(), 'cModel.pyDiscModel: CM is not initialized.'
+        #assert False, 'pwr, sensitivity, depth = ' + repr(pwr) + ', ' + repr(sensitivity) + ', ' + repr(depth)
         try:
             dirCache = {}
             for rec in pycache:
@@ -445,7 +446,7 @@ EXPORT cModel := MODULE
             #assert False, 'ps.N = ' + str(ps.N)
             if not vars:
                 vars = ps.getVarNames()
-            newCM = cdisc.discover(ps, vars, power=pwr, sensitivity=sensitivity)
+            newCM = cdisc.discover(ps, vars, maxLevel=depth, power=pwr, sensitivity=sensitivity)
             edges = newCM.getEdges()
             edgeNodes = {}
             for edge in edges:
@@ -453,14 +454,16 @@ EXPORT cModel := MODULE
                 edgeNodes[cause] = True
                 edgeNodes[effect] = True
                 strength = newCM.getEdgeProp(edge, 'dir_rho')
-                yield (cause, effect, float(strength))
+                corr = ps.corrCoef(cause, effect)
+                MDE = 0.0;
+                yield (cause, effect, float(strength), float(corr), float(MDE))
             # If any variable was not in an edge, add a pseudo-edge, so
             # that it shows in the graph.
             for var in vars:
                 edgeVar = edgeNodes.get(var, None)
                 if edgeVar is None:
                     # Not in any edge
-                    yield(var, '', 0.0)
+                    yield(var, '', 0.0, 0.0, 0.0)
         except:
             from because.hpcc_utils import format_exc
             assert False, format_exc.format('cModel.pyDiscModel')
@@ -490,9 +493,9 @@ EXPORT cModel := MODULE
       * node and cannot be distributed.
       * Uses pyDiscoverModel above to communicate with the python package.
       */
-    EXPORT DATASET(DiscResult) DiscoverModel(SET OF STRING vars, REAL pwr, REAL sensitivity, UNSIGNED cm) := FUNCTION
+    EXPORT DATASET(DiscResult) DiscoverModel(SET OF STRING vars, REAL pwr, REAL sensitivity, UNSIGNED depth, UNSIGNED cm) := FUNCTION
         //cache := getCache(vars, cm, pwr:=pwr);
-        rslt := pyDiscModel(vars, pwr, sensitivity, cm);
+        rslt := pyDiscModel(vars, pwr, sensitivity, depth, cm);
         RETURN rslt;
     END;
 END;

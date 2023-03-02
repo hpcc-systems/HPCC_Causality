@@ -317,6 +317,8 @@ EXPORT Types := MODULE
     STRING causeVar;
     STRING effectVar;
     REAL strength;
+    REAL correlation;
+    REAL MDE;
   END;
 
   EXPORT ChartGrid := RECORD
@@ -339,6 +341,7 @@ EXPORT Types := MODULE
     STRING dataname;
     STRING qtype;
     UNSIGNED dims;
+    STRING title;
     STRING xlabel;
     STRING ylabel;
     STRING zlabel;
@@ -347,5 +350,21 @@ EXPORT Types := MODULE
     REAL range1high;
     REAL range2low;
     REAL range2high;
+  END;
+
+  EXPORT VarSummary := RECORD
+    STRING name;
+    BOOLEAN isDiscrete;
+    BOOLEAN isCategorical;
+    BOOLEAN isTextual;
+    UNSIGNED cardinality;
+    SET OF REAL numValues;
+    SET OF STRING textValues;
+    
+  END;
+  EXPORT DatasetSummary := RECORD
+    UNSIGNED numRecords;
+    SET OF STRING varNames;
+    DATASET(VarSummary) varDetails;
   END;
 END;

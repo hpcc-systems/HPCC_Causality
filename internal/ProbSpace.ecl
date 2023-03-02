@@ -12,6 +12,7 @@ ProbQuery := Types.ProbQuery;
 PDist := Types.Distribution;
 AnyField := Types.AnyField;
 nlQuery := Types.nlQuery;
+DatasetSummary := Types.DatasetSummary;
 
 globalScope := 'probspace' + node + '.ecl';
 
@@ -112,6 +113,41 @@ EXPORT ProbSpace := MODULE
         RETURN ps;
     END;
 
+    /** 
+      * Dataset Summary
+      */
+    EXPORT DatasetSummary getSummary(UNSIGNED ps) := 
+        EMBED(Python: globalscope(globalScope), persist('query'))
+        assert 'PS' in globals(), 'ProbSpace.DatasetSummary: PS is not initialized.'
+        try:
+            nRecs = PS.N
+            vars = PS.getVarNames()
+            varDetails = []
+            for var in vars:
+                vals = []
+                strVals = []
+                isDisc = PS.isDiscrete(var)
+                isCat = PS.isCategorical(var)
+                isStr = PS.isStringVal(var)
+                if isDisc:
+                    card = PS.cardinality(var)
+                    rawvals = PS.getValues(var)
+                    if isStr:
+                        strVals = rawvals
+                        for val in rawvals:
+                            nval = PS.strToNum(var, val)
+                            vals.append(float(nval))
+                    else:
+                        vals = [float(rawval) for rawval in rawvals]
+                else:
+                    card = nRecs
+                varDetails.append((var, isDisc, isCat, isStr, card, vals, strVals))
+            return ((nRecs, vars, varDetails))
+        except:
+            from because.hpcc_utils import format_exc
+            assert False, format_exc.format('ProbSpace.getSummary')
+        
+    ENDEMBED;
     /**
       * Call the ProbSpace.P() function with a set of queries.
       *
