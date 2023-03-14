@@ -1,0 +1,6 @@
+<Manifest>
+    <Resource filename="./resources/res/index.html" />
+    <Resource filename="./resources/res/index.css" />
+    <Resource filename="./resources/res/index.js" />
+    <Resource filename="./resources/res/index.eclnb" />
+</Manifest>

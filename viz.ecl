@@ -610,6 +610,7 @@ EXPORT viz := MODULE
         STRING _plotPyFunc(SET OF STRING pyqueries, STRING pyps) := EMBED(Python: fold)
             outStr = """
                     IMPORT HPCC_causality AS _HC;
+                    // IMPORT $.^.^ AS _HC;    // GJS Testing
                     _v := _HC.viz;
                     _PS := {ps};
                     """.format(ps = pyps)
@@ -627,7 +628,7 @@ EXPORT viz := MODULE
             for plotName in plotNames:
                 plotNameStrs.append('{' + '\'' + plotName + '\'' + '}')
             plotNameStr = '[' + ','.join(plotNameStrs) + ']'
-            finalStr = """OUTPUT(DATASET({plots}, {{STRING name}}), NAMED('_plots'));
+            finalStr = """OUTPUT(DATASET({plots}, {{STRING name}}), NAMED('__hpcc_index_html'));
                         """.format(plots = plotNameStr)
             outStr += finalStr
             return outStr
