@@ -43,8 +43,16 @@ EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING c
     /**
       * Summary
       */
-    EXPORT DatasetSummary Summary() := FUNCTION
-      RETURN ProbSpace.getSummary(PS);
+    EXPORT DatasetSummary Summary(UNSIGNED psId=PS) := FUNCTION
+      RETURN ProbSpace.getSummary(psId);
+    END;
+    
+    EXPORT UNSIGNED SubSpace(STRING filter, UNSIGNED psId=PS) :=  FUNCTION
+      filtDS := DATASET([{1, filter}], nlQuery);
+      filtDS_D := DISTRIBUTE(filtDS, ALL);
+      psidDS := ProbSpace.SubSpace(filtDS_D, psId);
+      newPsid := MAX(psidDS, id);
+      RETURN newPsid;
     END;
     
     /**
@@ -61,9 +69,9 @@ EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING c
       * @return A set of NumericField records, with value being the probability
       *         of the query as field-number 1.
       */
-    EXPORT DATASET(NumericField) P(DATASET(ProbQuery) queries) := FUNCTION
+    EXPORT DATASET(NumericField) P(DATASET(ProbQuery) queries, UNSIGNED psid=PS) := FUNCTION
         queries_D := DISTRIBUTE(queries, id);
-        probs := ProbSpace.P(queries_D, PS);
+        probs := ProbSpace.P(queries_D, psid);
         probs_S := SORT(probs, id);
         RETURN probs_S;
     END;
@@ -79,9 +87,9 @@ EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING c
       * @return A set of NumericField records, with value being the Expected Value of each
       *         query.
       */
-    EXPORT DATASET(NumericField) E(DATASET(ProbQuery) queries) := FUNCTION
+    EXPORT DATASET(NumericField) E(DATASET(ProbQuery) queries, UNSIGNED psid=PS) := FUNCTION
         queries_D := DISTRIBUTE(queries, id);
-        exps := ProbSpace.E(queries_D, PS);
+        exps := ProbSpace.E(queries_D, psid);
         exps_S := SORT(exps, id);
         RETURN exps_S;
     END;
@@ -91,9 +99,12 @@ EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING c
       * Natural Language Probability query
       *
       */
-    EXPORT DATASET(AnyField) Query(DATASET(nlQuery) queries) := FUNCTION
-      queries_D := DISTRIBUTE(queries, id);
-      results := ProbSpace.Query(queries_D, PS);
+    EXPORT DATASET(AnyField) Query(SET OF STRING queries, UNSIGNED psid=PS) := FUNCTION
+      dummy := DATASET([{1}], {UNSIGNED d});
+      queryRecs := NORMALIZE(dummy, COUNT(queries), TRANSFORM(nlQuery, SELF.id:=COUNTER, 
+              SELF.query:=queries[COUNTER]));
+      queries_D := DISTRIBUTE(queryRecs, id);
+      results := ProbSpace.Query(queries_D, psid);
       return SORT(results, id);
     END;
 
@@ -101,9 +112,12 @@ EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING c
       * Natural Language Probability Distribution query
       *
       */
-    EXPORT DATASET(Distr) QueryDistr(DATASET(nlQuery) queries) := FUNCTION
-      queries_D := DISTRIBUTE(queries, id);
-      results := ProbSpace.QueryDistr(queries_D, PS);
+    EXPORT DATASET(Distr) QueryDistr(SET OF STRING queries, UNSIGNED psid=PS) := FUNCTION
+      dummy := DATASET([{1}], {UNSIGNED d});
+      queryRecs := NORMALIZE(dummy, COUNT(queries), TRANSFORM(nlQuery, SELF.id:=COUNTER, 
+              SELF.query:=queries[COUNTER]));
+      queries_D := DISTRIBUTE(queryRecs, id);
+      results := ProbSpace.QueryDistr(queries_D, psid);
       return SORT(results, id);
     END;
 
@@ -118,9 +132,9 @@ EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING c
       *
       * @return A set of Types.Distr records, describing each of the queried distributions.
       */
-    EXPORT DATASET(Distr) Distr(DATASET(ProbQuery) queries) := FUNCTION
+    EXPORT DATASET(Distr) Distr(DATASET(ProbQuery) queries, UNSIGNED psid=PS) := FUNCTION
         queries_D := DISTRIBUTE(queries, id);
-        distrs := ProbSpace.Distr(queries_D, PS);
+        distrs := ProbSpace.Distr(queries_D, psid);
         distrs_S := SORT(distrs, id);
         RETURN distrs_S;
     END;
@@ -137,9 +151,9 @@ EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING c
       *     Values less than .5 indicate probable independence.
       *     Values greater than .5 indicate probable dependence
       */
-    EXPORT DATASET(NumericField) Dependence(DATASET(ProbQuery) queries) := FUNCTION
+    EXPORT DATASET(NumericField) Dependence(DATASET(ProbQuery) queries, UNSIGNED psid=PS) := FUNCTION
         queries_D := DISTRIBUTE(queries, id);
-        deps := ProbSpace.Dependence(queries_D, PS);
+        deps := ProbSpace.Dependence(queries_D, psid);
         deps_S := SORT(deps, id);
         RETURN deps_S;
     END;
@@ -156,9 +170,9 @@ EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING c
       *     targets are most likely independent.  0 indicates probable dependence.
       *
       */
-    EXPORT DATASET(NumericField) isIndependent(DATASET(ProbQuery) queries) := FUNCTION
+    EXPORT DATASET(NumericField) isIndependent(DATASET(ProbQuery) queries, UNSIGNED psid=PS) := FUNCTION
         queries_D := DISTRIBUTE(queries, id);
-        deps := ProbSpace.Dependence(queries_D, PS);
+        deps := ProbSpace.Dependence(queries_D, psid);
         deps_B := PROJECT(deps, TRANSFORM(RECORDOF(LEFT),
                                     SELF.value := IF(LEFT.value > .5, 0, 1),
                                     SELF := LEFT), LOCAL);
@@ -180,10 +194,10 @@ EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING c
       * @return A DATASET(NumericField) with the prediction values in field number 1.
       * 
       */
-    EXPORT DATASET(NumericField) Predict(STRING target, SET OF STRING varNames, DATASET(NumericField) varDat) := FUNCTION
+    EXPORT DATASET(NumericField) Predict(STRING target, SET OF STRING varNames, DATASET(NumericField) varDat, UNSIGNED psid=PS) := FUNCTION
       dat_D := DISTRIBUTE(varDat, id);
       dat_S := SORT(dat_D, id, number, LOCAL);
-      preds := ProbSpace.Predict(dat_S, varNames, target, PS);
+      preds := ProbSpace.Predict(dat_S, varNames, target, psid);
       preds_S := SORT(preds, id);
       RETURN preds_S;
     END;
@@ -201,10 +215,10 @@ EXPORT Probability(DATASET(AnyField) ds, SET OF STRING varNames, SET OF STRING c
       * @return A DATASET(NumericField) with the prediction values in field number 1.
       * 
       */
-    EXPORT DATASET(NumericField) Classify(STRING target, SET OF STRING varNames, DATASET(NumericField) varDat) := FUNCTION
+    EXPORT DATASET(NumericField) Classify(STRING target, SET OF STRING varNames, DATASET(NumericField) varDat, UNSIGNED psid=PS) := FUNCTION
       dat_D := DISTRIBUTE(varDat, id);
       dat_S := SORT(dat_D, id, number, LOCAL);
-      preds := ProbSpace.Classify(dat_S, varNames, target, PS);
+      preds := ProbSpace.Classify(dat_S, varNames, target, psid);
       preds_S := SORT(preds, id);
       RETURN preds_S;
     END;

@@ -26,17 +26,22 @@ EXPORT viz := MODULE
         STRING qtype;
         DATASET(ParseVar) targets;
         DATASET(ParseVar) conds;
+        DATASET(ParseVar) controls;
+        DATASET(ParseVar) filters;
         DATASET(ParseVar) interventions;
+        DATASET(ParseVar) counterfactuals;
     END;
 
     EXPORT DATASET(ChartGrid) getGrid(DATASET(ParseResults) presults, UNSIGNED ps) := EMBED(Python: globalscope(globalScope), persist('query'))
         from because.visualization import grid2 as grid
         negInf = -9999999
         inf = 9999999
+        assert 'PSDict' in globals(), 'viz.getGrid: PSDict is not initialized.'
+        assert ps in PSDict, 'viz.getGrid: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
-            assert 'PS' in globals(), 'PS is not initialized.'
             for result in presults:
-                qtype, targs, conds, intervs = result
+                qtype, targs, conds, controls, filters, intervs, cfac = result
                 if qtype in ['prob', 'cprob']:
                     # For prob and cprob, we use all variables in the query
                     # and all variables in the grid.
@@ -114,14 +119,16 @@ EXPORT viz := MODULE
     ENDEMBED; // GetGrid
 
     EXPORT DATASET(ChartGrid) getHeatmapGrid(DATASET(ParseResults) presults, UNSIGNED ps) := EMBED(Python: globalscope(globalScope), persist('query'))
+        assert 'PSDict' in globals(), 'viz.getHeatmapGrid: PSDict is not initialized.'
+        assert ps in PSDict, 'viz.getHeatmapGrid: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
             # Return grid of [(var1, var2)], undirected.
-            assert 'PS' in globals(), 'PS is not initialized.'
             for result in presults:
                 power = 0
                 sensitivity = 5
                 varGrid = []
-                qtype, targs, conds, intervs = result
+                qtype, targs, conds, controls, filters, intervs, cfacs = result
                 if qtype == 'dep':
                     power = 0
                 else:
@@ -171,11 +178,31 @@ EXPORT viz := MODULE
             raise RuntimeError(format_exc.format('viz.getHeatmapGrid'))
     ENDEMBED; // getHeatmapGrid
 
-    EXPORT STREAMED DATASET(ChartData) fillDataGrid(STREAMED DATASET(ChartGrid) grid, SET OF STRING vars, STRING queryType, UNSIGNED ps) := 
+    EXPORT STREAMED DATASET(ChartData) fillDataGrid(STREAMED DATASET(ChartGrid) grid, DATASET(ParseResults) presults, UNSIGNED ps) := 
             EMBED(Python: globalscope(globalScope), persist('query'), activity)
         ranges = [5, 16, 84, 95]
+        assert 'PSDict' in globals(), 'viz.fillDataGrid: PSDict is not initialized.'
+        assert ps in PSDict, 'viz.fillDataGrid: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
-            assert 'PS' in globals(), 'PS is not initialized.'
+            for result in presults:
+                # Should only be one record on each node.
+                queryType, targs, conds, controls, filters, intervs, cfac = result
+            controlSpecs = [(control[0],) for control in controls]
+            targVars = [targ[0] for targ in targs]
+            condVars = [cond[0] for cond in conds]
+            # FilterSpecs are a little more involved
+            filtSpecs = []
+            for filt in filters:
+                var, numVals, strVals, isList = filt
+                if strVals:
+                    vals = strVals
+                else:
+                    vals = numVals
+                if isList:
+                    vals = [tuple(vals)]
+                filtSpec = (var, ) + tuple(vals)
+                filtSpecs.append(filtSpec)
             for rec in grid:
                 varSpecs = []
                 terms = []
@@ -196,6 +223,7 @@ EXPORT viz := MODULE
                         terms.append(value)
                 allSpecs = []
                 nominals = []
+                vars = condVars + targVars
                 for i in range(len(vars)):
                     var = vars[i]
                     if i < len(varSpecs):
@@ -214,23 +242,28 @@ EXPORT viz := MODULE
                     allSpecs.append(spec)
                 rangesTup = (0.0, 0.0, 0.0, 0.0)
                 if queryType == 'prob':
+                    # One or two targets, no conditionals
                     targets = allSpecs
-                    conds = []
+                    conds = filtSpecs # Don't need controls when no conditionals
+                    #assert False, 'targets = ' + str(targets) + ', conds = ' + str(conds) + ', vars = ' + str(vars)
                     result = PS.P(targets, conds)
                 elif queryType == 'cprob':
+                    # 1 target and one conditional
                     targets = allSpecs[-1:]
-                    conds = allSpecs[:-1]
+                    conds = allSpecs[:-1] + filtSpecs + controlSpecs
                     result = PS.P(targets, conds)
                 elif queryType == 'bprob':
-                    targets = allSpecs[-1:]
-                    conds = allSpecs[:-1]
+                    # Any number of targets (joint probability), and 1 or two conditionals
+                    nConds = len(condVars)
+                    targets = allSpecs[nConds:]
+                    conds = allSpecs[:nConds] + filtSpecs + controlSpecs
                     #assert False, 'bprob targs = ' + str(targets) + ', conds = ' + str(conds)
                     result = PS.P(targets, conds)
                 elif queryType == 'expct':
                     targets = allSpecs[-1:]
-                    conds = allSpecs[:-1]
+                    conds = allSpecs[:-1] + filtSpecs + controlSpecs
                     result = PS.E(targets, conds)
-                    if len(conds) == 1:
+                    if len(condVars) == 1:
                         d = PS.distr(targets, conds)
                         r2low = d.percentile(ranges[0])
                         r1low = d.percentile(ranges[1])
@@ -251,8 +284,10 @@ EXPORT viz := MODULE
             SET OF STRING vars, STRING queryType, DATASET(parseVar) conds, UNSIGNED ps) := 
             EMBED(Python: globalscope(globalScope), persist('query'), activity)
         ranges = [5, 16, 84, 95]
+        assert 'PSDict' in globals(), 'viz.fillHeatmapGrid: PSDict is not initialized.'
+        assert ps in PSDict, 'viz.fillHeatmapGrid: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
-            assert 'PS' in globals(), 'PS is not initialized.'
             for rec in grid:
                 varSpecs = []
                 terms = []
@@ -315,44 +350,56 @@ EXPORT viz := MODULE
 
     EXPORT DATASET(ParseResults) parseQuery(STRING query, UNSIGNED ps) := EMBED(Python: globalscope(globalScope), persist('query'))
         from because.hpcc_utils.parseQuery import Parser
+        assert 'PSDict' in globals(), 'viz.parseQuery(ECL): PSDict is not initialized.'
+        assert ps in PSDict, 'viz.parseQuery(ECL): invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
-            assert 'PS' in globals(), 'PS is not initialized.'
             allVars = PS.getVarNames()[:]
             if 'id' in allVars:
                 allVars.remove('id') # Don't consider the id field.
             queries = [query]
             PARSER = Parser()
-            specList = PARSER.parse(queries)
+            specList = PARSER.parse(queries, isGraph=True)
             spec = specList[0]
-            cmd, targs, conds, intervs = spec
+            cmd, targs, conds, ctrlfor, intervs, cfac = spec
             qtype = 'unknown'
+            # Split conditionals into bound and unbound subsets.  Bound conditionals are
+            # considered filters, while unbound are used to form the grid.
+            uconds = []
+            filters = []
+            for cond in conds:
+                if len(cond) > 1:
+                    filters.append(cond)
+                else:
+                    uconds.append(cond)
+            conds = uconds
             if cmd == 'D': # Unbound distribution
-                assert len(conds) <= 1, 'Probability Charts only support zero or one conditional.  Got: ' + query
+                assert len(conds) <= 1, 'Probability Charts only support zero or one unbound conditional.  Got: ' + query
                 if len(conds) == 0:
                     assert len(targs) <= 2, 'Probability charts only support one or two target variables.'
                     qtype = 'prob'
                 else:
-                    assert len(targs) == 1, 'Probability charts only support a single target and up to one conditional. Got: ' + query
+                    assert len(targs) == 1, 'Probability charts only support a single target and up to one unbound conditional. Got: ' + query
                     qtype = 'cprob'
             elif cmd == 'P': # Probability. Treat as Bound Probability.
                 qtype = 'bprob'
-                assert len(conds) > 0 and len(conds) <= 2 , 'Bound Probability Charts require one or two conditionals. Got: ' + query
+                assert len(conds) > 0 and len(conds) <= 2 , 'Bound Probability Charts require one or two unbound conditionals. Got: ' + query
             elif cmd == 'E': # Expectation
                 qtype = 'expct'
-                assert len(conds) > 0 and len(conds) <= 2 and len(targs) == 1, 'Expectation Charts only support a single target and one or two conditionals. Got: ' + query
+                assert len(conds) > 0 and len(conds) <= 2 and len(targs) == 1, 'Expectation Charts only support a single target and one or two unbound conditionals. Got: ' + query
             elif cmd in ['DEPENDENCE', 'CORRELATION']:
                 # Dependence or correlation heatmap. qtype is 'dep' or 'cor'
                 maxVars = 25
                 qtype = cmd.lower()[:3]
                 if len(targs) == 0:
                     targs = [(var,) for var in allVars][:maxVars]
-                assert len(targs) >= 2 and len(targs) <= maxVars, 'Dependence or correlation heatmaps require between 2 and ' + str(maxVars) + ' variables.' + \
+                assert len(targs) >= 2 and len(targs) <= maxVars, 'Dependence or correlation heatmaps require between 2 and ' + str(maxVars) + ' target variables.' + \
                     '  An empty set indicates all variables in dataset.'
             elif cmd == 'CMODEL':
                 qtype = 'cmodel'
                 if len(targs) == 0:
                     targs = [(var,) for var in allVars]
-                assert len(targs) >= 2, 'Causal model requires at least two variables.'
+                assert len(targs) >= 2, 'Causal model requires at least two target variables.'
 
             def formatSpecs(specs):
                 outSpecs = []
@@ -376,8 +423,11 @@ EXPORT viz := MODULE
                 return outSpecs
             targSpecs = formatSpecs(targs)
             condSpecs = formatSpecs(conds)
+            controlSpecs = formatSpecs(ctrlfor)
+            filtSpecs = formatSpecs(filters)
             intervSpecs = formatSpecs(intervs)
-            yield (qtype, targSpecs, condSpecs, intervSpecs)
+            cfacSpecs = formatSpecs(cfac)
+            yield (qtype, targSpecs, condSpecs, controlSpecs, filtSpecs, intervSpecs, cfacSpecs)
         except:
             from because.hpcc_utils import format_exc
             raise RuntimeError(format_exc.format('viz.parseQuery'))
@@ -387,7 +437,7 @@ EXPORT viz := MODULE
         # Extract variable names from the parse results
         # Should only be one record.
         for result in presults:
-            qtype, targs, conds, intervs = result
+            qtype, targs, conds, controls, filters, intervs, cfacs = result
             tvars = [s[0] for s in targs]
             cvars = [s[0] for s in conds]
             if qtype in ['cmodel', 'correlation', 'dependence']:
@@ -400,13 +450,15 @@ EXPORT viz := MODULE
     ENDEMBED;
 
     EXPORT DATASET({BOOLEAN val}) needSorting(STRING qtype, SET OF STRING pyvars, UNSIGNED ps) := EMBED(Python: globalscope(globalScope), persist('query'))
+        assert 'PSDict' in globals(), 'viz.needSorting: PSDict is not initialized.'
+        assert ps in PSDict, 'viz.needSorting: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         if qtype == 'prob' or qtype == 'cdisc' or qtype == 'dep' or qtype == 'cor':
             return [(False,)]
         else:
             # For types other than prob or cdisc or dep or cor, if the first cond var is categorical,
             # Then we need to sort.
             condVar = pyvars[0]
-            assert 'PS' in globals(), 'PS is not initialized.'
             if PS.isCategorical(condVar):
                 return [(True,)]
         return [(False,)]
@@ -424,42 +476,77 @@ EXPORT viz := MODULE
         testGrid_D := DISTRIBUTE(testGrid, id);
         vars := getVarNames(qresults);
         conds := qresult.conds; // fillDatagrid and fillDiscGrid need the conditional clause.
+        controls := qresult.controls; // fillDatagrid needs the controFor variables
         dataGrid := IF(queryType = 'dep' OR queryType = 'cor',
             fillHeatmapGrid(testGrid_D, vars, queryType, conds, PS), IF(queryType = 'cmodel',
             fillDiscGrid(vars, conds, PS),
-            fillDataGrid(testGrid_D, vars, queryType, PS)));
+            fillDataGrid(testGrid_D, qresults, PS)));
         //dataGrid := fillDataGrid(testGrid_D, vars, queryType, PS);
         dataGrid_S := IF(needSorting(queryType, vars, PS)[1].val, SORT(dataGrid, y_), SORT(dataGrid, id));
         RETURN dataGrid_S;
     END;
     
-    EXPORT DATASET(ChartInfo) fillChartInfo(SET OF STRING vars, STRING query, STRING querytype, STRING dataname, UNSIGNED ps) := 
+    EXPORT DATASET(ChartInfo) fillChartInfo(SET OF STRING vars, STRING query, DATASET(ParseResults) qresults, STRING dataname, UNSIGNED ps) := 
             EMBED(Python: globalscope(globalScope), persist('query'))
+        assert 'PSDict' in globals(), 'viz.fillChartInfo: PSDict is not initialized.'
+        assert ps in PSDict, 'viz.fillChartInfo: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
+
         try:
-            assert 'PS' in globals(), 'PS is not initialized.'
+            for result in qresults:
+                # Should be only one RECORD
+                querytype, targs, conds, controls, filters, intervs, cfac = result
             target = vars[-1]
             conds = vars[:-1]
             dims = 2
             if querytype == 'prob':
-                dims = 2
-                title = 'Probabiity Distribution of ' + target
-                xlabel = 'x'
-                ylabel = 'P(' + target + ' = x)'
-                mean = PS.E(target)
-                d = PS.distr(target)
-                ranges = [5, 16, 84, 95]
-                r2low = d.percentile(ranges[0])
-                r1low = d.percentile(ranges[1])
-                r1high = d.percentile(ranges[2])
-                r2high = d.percentile(ranges[3])
-                info = (dataname, querytype, dims, title, xlabel, ylabel, '', mean, r1low, r1high, r2low, r2high)
+                if len(vars) == 1:
+                    dims = 2
+                    title = 'Probabiity Distribution -- ' + query
+                    xlabel = 'x'
+                    ylabel = 'P(' + vars[0] + ' = x)'
+                    zlabel = ''
+                    # To get the mean and ranges, we need to interpret the filter portion
+                    # of the parsed query
+                    filtSpecs = []
+                    for filter in filters:
+                        var, numVals, strVals, isList = filter
+                        if strVals:
+                            vals = strVals
+                        else:
+                            vals = numVals
+                        if isList:
+                            vals = [tuple(vals)]
+                        filtSpec = (var,) + tuple(vals)
+                        filtSpecs.append(filtSpec)
+                    mean = PS.E(target, filtSpecs)
+                    d = PS.distr(target, filtSpecs)
+                    ranges = [5, 16, 84, 95]
+                    r2low = d.percentile(ranges[0])
+                    r1low = d.percentile(ranges[1])
+                    r1high = d.percentile(ranges[2])
+                    r2high = d.percentile(ranges[3])
+                else:
+                    dims = 3
+                    title = 'Joint Probabiity Distribution -- ' + query
+                    xlabel = 'x'
+                    ylabel = 'y'
+                    zlabel = 'P(' + vars[0] + ' = x, ' + vars[1]  + ' = y)'
+                    # 3d Graph doesn't show range bands
+                    mean = 0.0
+                    r2low = 0.0
+                    r1low = 0.0
+                    r1high = 0.0
+                    r2high = 0.0
+
+                info = (dataname, querytype, dims, title, xlabel, ylabel, zlabel, mean, r1low, r1high, r2low, r2high)
             elif querytype == 'cprob':
                 dims = 3
                 title = 'Probability Plot -- ' + query
                 xlabel = conds[0]
                 ylabel = 'x'
                 zlabel = 'P(' + target + ' = x | ' + conds[0] + ')'
-                info = (dataname, querytype, dims, title, xlabel, ylabel, '', 0.0, 0.0, 0.0, 0.0, 0.0)
+                info = (dataname, querytype, dims, title, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
             elif querytype == 'bprob':
                 dims = 2
                 title = 'Probability Plot -- ' + query
@@ -513,10 +600,8 @@ EXPORT viz := MODULE
 
     EXPORT DATASET(ChartInfo) getChartInfo(STRING query, STRING dataname, UNSIGNED PS) := FUNCTION
         qresults := parseQuery(query, PS);
-        qresult := qresults[1];
-        queryType := qresult.qtype;
         vars := getVarNames(qresults);
-        results := fillChartInfo(vars, query, queryType, dataname, PS);
+        results := fillChartInfo(vars, query, qresults, dataname, PS);
         RETURN results;
     END;
 

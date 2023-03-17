@@ -72,13 +72,14 @@ EXPORT ProbSpace := MODULE
                     outSpecs.append(outSpec)
                 return outSpecs
             extractSpec = _extractSpec
-            global PS
-            if 'PS' in globals():
+            global PSDict
+            if 'PSDict' in globals() and len(PSDict) >= 1:
                 # Probspace already allocated on this node (by another thread).  We're done.
                 # Release the global lock
                 globlock.release()
-                return [(1,)] 
+                return [(len(PSDict),)]
             try:
+                PSDict = {}
                 DS = {}
                 varMap = {}
                 for i in range(len(vars)):
@@ -97,9 +98,11 @@ EXPORT ProbSpace := MODULE
                         ids.append(id)
                         lastId = id
                 PS = ProbSpace(DS, categorical=pycategoricals)
+                psID = len(PSDict) + 1
+                PSDict[psID] = PS
                 # Release the global lock
                 globlock.release()
-                return [(1,)]
+                return [(psID,)]
             except:
                 from because.hpcc_utils import format_exc
                 # Release the global lock
@@ -109,8 +112,8 @@ EXPORT ProbSpace := MODULE
         ds_distr := DISTRIBUTE(ds, ALL);
         ds_S := SORT(NOCOMBINE(ds_distr), id, number, LOCAL);
         psds := pyInit(NOCOMBINE(ds_S), varNames, categoricals, node, nNodes);
-        ps := SUM(psds, id);
-        RETURN ps;
+        psid := MAX(psds, id);
+        RETURN psid;
     END;
 
     /** 
@@ -118,7 +121,9 @@ EXPORT ProbSpace := MODULE
       */
     EXPORT DatasetSummary getSummary(UNSIGNED ps) := 
         EMBED(Python: globalscope(globalScope), persist('query'))
-        assert 'PS' in globals(), 'ProbSpace.DatasetSummary: PS is not initialized.'
+        assert 'PSDict' in globals(), 'ProbSpace.DatasetSummary: PSDict is not initialized.'
+        assert ps in PSDict, 'ProbSpace.DatasetSummary: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
             nRecs = PS.N
             vars = PS.getVarNames()
@@ -148,6 +153,38 @@ EXPORT ProbSpace := MODULE
             assert False, format_exc.format('ProbSpace.getSummary')
         
     ENDEMBED;
+
+    EXPORT STREAMED DATASET(dummyRec) SubSpace(STREAMED DATASET(nlQuery) filters, UNSIGNED ps) := 
+        EMBED(Python: globalscope(globalScope), persist('query'), activity)
+        from because.hpcc_utils.parseQuery import Parser
+        assert 'PSDict' in globals(), 'ProbSpace.SubSpace: PSDict is not initialized.'
+        assert ps in PSDict, 'ProbSpace.SubSpace: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
+        # Should only be one query in the dataset
+        try:
+            for filter in filters:
+                id, filt = filter
+                # We modify the filter to make it look like a probability query so that
+                # we can re-use the parser
+                query = 'P(' + filt + ')'
+                qs = [query]
+                PARSER = Parser()
+                specList = PARSER.parse(qs)
+                spec = specList[0]
+                cmd, targs, conds, ctrlfor, intervs, cfac = spec
+                # We only care about the target clause, which is now a structured filter.
+                sfilt = targs
+                ss = PS.SubSpace(sfilt)
+                psid = len(PSDict) + 1
+                PSDict[psid] = ss
+                return ([(psid,)])
+        except:
+            from because.hpcc_utils import format_exc
+            assert False, format_exc.format('ProbSpace.SubSpace')
+    ENDEMBED;
+
+
+
     /**
       * Call the ProbSpace.P() function with a set of queries.
       *
@@ -156,7 +193,9 @@ EXPORT ProbSpace := MODULE
       */
     EXPORT STREAMED DATASET(NumericField) P(STREAMED DATASET(ProbQuery) queries, UNSIGNED ps) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
-        assert 'PS' in globals(), 'ProbSpace.P: PS is not initialized.'
+        assert 'PSDict' in globals(), 'ProbSpace.P: PSDict is not initialized.'
+        assert ps in PSDict, 'ProbSpace.P: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
             results = []
             for query in queries:
@@ -183,7 +222,9 @@ EXPORT ProbSpace := MODULE
       */
     EXPORT STREAMED DATASET(AnyField) E(STREAMED DATASET(ProbQuery) queries, UNSIGNED ps) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
-        assert 'PS' in globals(), 'ProbSpace.E: PS is not initialized.'
+        assert 'PSDict' in globals(), 'ProbSpace.E: PSDict is not initialized.'
+        assert ps in PSDict, 'ProbSpace.E: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
             results = []
             for query in queries:
@@ -207,7 +248,9 @@ EXPORT ProbSpace := MODULE
     EXPORT STREAMED DATASET(AnyField) Query(STREAMED DATASET(nlQuery) queries, UNSIGNED ps) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
         from because.probability import probquery
-        assert 'PS' in globals(), 'ProbSpace.E: PS is not initialized.'
+        assert 'PSDict' in globals(), 'ProbSpace.Query: PSDict is not initialized.'
+        assert ps in PSDict, 'ProbSpace.Query: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
             inQueries = []
             inIds = []
@@ -238,10 +281,11 @@ EXPORT ProbSpace := MODULE
       */
     EXPORT STREAMED DATASET(PDist) QueryDistr(STREAMED DATASET(nlQuery) queries, UNSIGNED ps) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
-        from because.hpcc_utils import formatQuery
-        import numpy as np
         from because.probability import probquery
-        assert 'PS' in globals(), 'ProbSpace.Distr: PS is not initialized.'
+        import numpy as np
+        assert 'PSDict' in globals(), 'ProbSpace.QueryDistr: PSDict is not initialized.'
+        assert ps in PSDict, 'ProbSpace.QueryDistr: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
             inQueries = []
             inIds = []
@@ -319,7 +363,9 @@ EXPORT ProbSpace := MODULE
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
         from because.hpcc_utils import formatQuery
         import numpy as np
-        assert 'PS' in globals(), 'ProbSpace.Distr: PS is not initialized.'
+        assert 'PSDict' in globals(), 'ProbSpace.Distr: PSDict is not initialized.'
+        assert ps in PSDict, 'ProbSpace.Distr: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
             results = []
             for query in queries:
@@ -383,7 +429,9 @@ EXPORT ProbSpace := MODULE
 
     EXPORT STREAMED DATASET(NumericField) Dependence(STREAMED DATASET(ProbQuery) queries, UNSIGNED ps) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
-        assert 'PS' in globals(), 'ProbSpace.Dependence: PS is not initialized.'
+        assert 'PSDict' in globals(), 'ProbSpace.Dependence: PSDict is not initialized.'
+        assert ps in PSDict, 'ProbSpace.Dependnce: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
             results = []
             for query in queries:
@@ -419,8 +467,12 @@ EXPORT ProbSpace := MODULE
       * Queries are distributed among nodes so that the run in parallel.
       *
       */
-    EXPORT STREAMED DATASET(NumericField) Predict(STREAMED DATASET(NumericField) ds, SET OF STRING varNames, STRING target, UNSIGNED ps) := 
+    EXPORT STREAMED DATASET(NumericField) Predict(STREAMED DATASET(NumericField) ds, 
+            SET OF STRING varNames, STRING target, UNSIGNED ps) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
+        assert 'PSDict' in globals(), 'ProbSpace.Predict: PSDict is not initialized.'
+        assert ps in PSDict, 'ProbSpace.Predict: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
             ids = []
             prevId = None
@@ -459,6 +511,9 @@ EXPORT ProbSpace := MODULE
       */
     EXPORT STREAMED DATASET(NumericField) Classify(STREAMED DATASET(NumericField) ds, SET OF STRING varNames, STRING target, UNSIGNED ps) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
+        assert 'PSDict' in globals(), 'ProbSpace.Classify: PSDict is not initialized.'
+        assert ps in PSDict, 'ProbSpace.Classify: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
         try:
             ids = []
             prevId = None

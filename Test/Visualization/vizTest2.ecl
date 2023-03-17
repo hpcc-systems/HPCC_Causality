@@ -59,14 +59,25 @@ summary := prob.Summary();
 
 OUTPUT(summary, NAMED('DatasetSummary'));
 
-tests := DATASET([{1, 'P(height <= 66)'}
-                ], nlQuery);
+malesPS := prob.SubSpace('gender=male', prob.PS);
+
+summary2 := prob.Summary(malesPS);
+
+OUTPUT(summary2, NAMED('DatasetSummaryMales'));
+
+femalesPS := prob.SubSpace('gender=female', prob.PS);
+
+summary3 := prob.Summary(femalesPS);
+
+OUTPUT(summary3, NAMED('DatasetSummaryFemales'));
+
+tests := ['P(height <= 66)'];
 
 results := prob.Query(tests);
 
 //query := 'P(genhealth in [4,5] | state)';
 query := 'CModel(height, weight, income, genhealth | $sensitivity=6)';
-queries := ['P(genhealth in [4,5] | income)', 'CModel(gender,height, weight, age | $power=5.0,$sensitivity=10.0, $depth=2)'];
+queries := ['P(genhealth in [4,5] | income)'];
 
 pr := viz.parseQuery(query, prob.PS);
 //OUTPUT(pr);
