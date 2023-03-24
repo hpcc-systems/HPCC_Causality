@@ -29,6 +29,11 @@ EXPORT Types := MODULE
       UNSIGNED id;
       STRING query;
     END;
+
+    EXPORT nlQueryRslt := RECORD(AnyField)
+      STRING query;
+    END;
+    
     /**
       * Record layout for Probability Query parameters
       *
@@ -106,6 +111,11 @@ EXPORT Types := MODULE
       STRING strVal;
     END;
 
+    EXPORT MetricQuery := RECORD
+      UNSIGNED id;
+      STRING cause;
+      STRING effect;
+    END;
     /**
       * Record to represent the Distribution of a single random variable
       *

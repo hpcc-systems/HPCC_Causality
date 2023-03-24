@@ -9,10 +9,14 @@ nNodes := Thorlib.nodes();
 node := Thorlib.node();
 
 NumericField := cTypes.NumericField;
+AnyField := Types.AnyField;
+nlQuery := Types.nlQuery;
+nlQueryRslt := Types.nlQueryRslt;
 cModelTyp := Types.cModel;
 PDist := Types.Distribution;
 ValidationReport := Types.ValidationReport;
 ProbQuery := Types.ProbQuery;
+MetricQuery := Types.MetricQuery;
 cMetrics := Types.cMetrics;
 ScanReport := Types.ScanReport;
 DiscResult := Types.DiscoveryResult;
@@ -52,22 +56,21 @@ EXPORT cModel := MODULE
       */
     EXPORT UNSIGNED Init(DATASET(cModelTyp) mod, UNSIGNED PS) := FUNCTION
 
-        STREAMED DATASET(dummyRec) pyInit(STREAMED DATASET(cModelTyp) mods, UNSIGNED pyps,
+        STREAMED DATASET(dummyRec) pyInit(STREAMED DATASET(cModelTyp) mods, UNSIGNED ps,
                             UNSIGNED pynode, UNSIGNED pynnodes) :=
                             EMBED(Python: globalscope(globalScope), persist('query'), activity)
             from because.causality import cgraph
             from because.causality import rv
             from because.hpcc_utils import globlock
-            global CM, NODE, NNODES
+            global CMDict, NODE, NNODES
             globlock.allocate()
             globlock.acquire()
-            if 'CM' in globals():
-                # Already Initialized.  We are done.
-                # Release the global lock
-                globlock.release()
-                return [(1,)]
             try:
-                assert 'PS' in globals(), 'Causality.Init: PS is not initialized.'
+                assert 'PSDict' in globals(), 'CModel.Init: PSDict is not initialized.'
+                assert ps in PSDict, 'CModel.Init: invalid probspace id = ' + str(ps)
+                PS = PSDict[ps]
+                if 'CMDict' not in globals():
+                    CMDict = {}
                 # Save the node number and the number of nodes
                 NODE = pynode
                 NNODES = pynnodes
@@ -88,12 +91,12 @@ EXPORT cModel := MODULE
                         varMap[i+1] = rvName
                         newrv = rv.RV(rvName, rvParents, rvIsDiscrete, rvType)
                         RVs.append(newrv)
-                ids = []
-                lastId = None
                 CM = cgraph.cGraph(RVs, ps=PS)
+                cmID = len(CMDict) + 1
+                CMDict[cmID] = CM
                 # Release the global lock
                 globlock.release()
-                return [(1,)]
+                return [(cmID,)]
             except:
                 from because.hpcc_utils import format_exc
                 # Release the global lock
@@ -118,6 +121,9 @@ EXPORT cModel := MODULE
       */
     EXPORT STREAMED DATASET(ValidationReport) TestModel(UNSIGNED order, UNSIGNED power, UNSIGNED cm) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
+        assert 'CMDict' in globals(), 'cModel.TestModel: CMDict is not initialized.'
+        assert cm in CMDict, 'cModel.TestModel: invalid cModel id = ' + str(ps)
+        CM = CMDict[cm]
         try:
             rep = None
             deps = CM.computeDependencies(order)
@@ -135,28 +141,6 @@ EXPORT cModel := MODULE
                 if NODE == i % NNODES:
                     myEdges.append(edges[i])
             rep = CM.TestModel(order = order, power=power, deps = myDeps, edges = myEdges)
-            #   - confidence is an estimate of the likelihood that the data generating process defined
-            #       by the model produced the data being tested.  Ranges from 0.0 to 1.0.
-            #   - numTotalTests is the number of independencies and dependencies implied by the model.
-            #   - numTestsPerType is a list, for each error type, 0 - nTypes, of the number of tests that
-            #       test for the given error type.
-            #   - numErrsPerType is a list, for each error type, of the number of failed tests.
-            #   - numWarnsPerType is a list, for each error type, of the number of tests with warnings.
-            #   - errorDetails is a list of failed tests, each with the following format:
-            #       [(errType, x, y, z, isDep, errStr)]
-            #       Where:
-            #           errType = 0 (Exogenous variables not independent) or;
-            #                    1 (Expected independence not observed) or; 
-            #                   2 (Expected dependence not observed)
-            #           x, y, z are each a list of variable names that
-            #               comprise the statement x _||_ y | z.
-            #               That is x is independent of y given z.
-            #           isDep True if a dependence is expected.  False for 
-            #               independence
-            #           pval -- The p-val returned from the independence test
-            #           errStr A human readable error string describing the error
-            #   - warningDetails is a list of tests with warnings.  Format is the same as
-            #       for errorDetails above.
             conf, numTotal, numPerType, numErrsPerType, numWarnsPerType, errorDetails, warnDetails = rep
             errStrs = [err[6] for err in errorDetails]
             warnStrs = [warn[6] for warn in warnDetails]
@@ -175,6 +159,9 @@ EXPORT cModel := MODULE
     EXPORT REAL ScoreModel(SET OF UNSIGNED numtestspertype, SET OF UNSIGNED numerrspertype,
                             SET OF UNSIGNED numwarnspertype, UNSIGNED cm) := 
         EMBED(Python: globalscope(globalScope), persist('query'))
+        assert 'CMDict' in globals(), 'cModel.ScoreModel: CMDict is not initialized.'
+        assert cm in CMDict, 'cModel.ScoreModel: invalid cModel id = ' + str(ps)
+        CM = CMDict[cm]
         try:
             confidence = CM.scoreModel(numtestspertype, numerrspertype, numwarnspertype)
             return confidence
@@ -187,7 +174,9 @@ EXPORT cModel := MODULE
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
         import numpy as np
         from because.hpcc_utils import formatQuery
-        assert 'CM' in globals(), 'cModel.Intervene: CM is not initialized.'
+        assert 'CMDict' in globals(), 'cModel.Intervene: CMDict is not initialized.'
+        assert cm in CMDict, 'cModel.Intervene: invalid cModel id = ' + str(ps)
+        CM = CMDict[cm]
         try:
             results = []
             for query in queries:
@@ -248,6 +237,114 @@ EXPORT cModel := MODULE
             assert False, format_exc.format('cModel.Intervene')
     ENDEMBED;
 
+    EXPORT STREAMED DATASET(nlQueryRslt) Query(STREAMED DATASET(nlQuery) queries, UNSIGNED cm) := 
+        EMBED(Python: globalscope(globalScope), persist('query'), activity)
+        from because.causality import cquery
+        assert 'CMDict' in globals(), 'cModel.Query: CMDict is not initialized.'
+        assert cm in CMDict, 'cModel.Query: invalid cModel id = ' + str(ps)
+        CM = CMDict[cm]
+        try:
+            inQueries = []
+            inIds = []
+            for item in queries:
+                id, query = item
+                inQueries.append(query)
+                inIds.append(id)
+            results = cquery.queryList(CM, inQueries, allowedResults=['P','E'])
+            for i in range(len(results)):
+                result = results[i]
+                q = inQueries[i]
+                id = inIds[i]
+                if type(result) == type(''):
+                    yield (1, id, 1, 0.0, result, q)
+                else:
+                    yield (1, id, 1, float(result), '', q)
+        except:
+            from because.hpcc_utils import format_exc
+            assert False, format_exc.format('ProbSpace.Query')
+    ENDEMBED;
+
+    /**
+      * Call the causality.distr() function with a set of natural language
+      * queries.
+      *
+      * Queries are distributed among nodes so that the run in parallel.
+      * Returns distributions as Types.Distribution dataset
+      *
+      */
+    EXPORT STREAMED DATASET(PDist) QueryDistr(STREAMED DATASET(nlQuery) queries, UNSIGNED cm) := 
+        EMBED(Python: globalscope(globalScope), persist('query'), activity)
+        from because.causality import cquery
+        import numpy as np
+        assert 'CMDict' in globals(), 'cModel.Query: CMDict is not initialized.'
+        assert cm in CMDict, 'cModel.Query: invalid cModel id = ' + str(cm)
+        CM = CMDict[cm]
+        PS = CM.prob
+        try:
+            inQueries = []
+            inIds = []
+            for item in queries:
+                id, query = item
+                inQueries.append(query)
+                inIds.append(id)
+            results = cquery.queryList(CM, inQueries, allowedResults=['D'])
+            for i in range(len(results)):
+                id = inIds[i]
+                dist = results[i]
+                hist = []
+                for entry in dist.ToHistTuple():
+                    minv, maxv, p = entry
+                    hist.append((float(minv), float(maxv), float(p)))
+                isDiscrete = dist.isDiscrete
+                isCategorical = PS.isCategorical(dist.rvName)
+                deciles = []
+                if not isDiscrete:
+                    # Only do deciles for continuous data.
+                    for p in range(10, 100, 10):
+                        decile = float(dist.percentile(p))
+                        deciles.append((float(p), float(p), decile))
+                stringVals = []
+                if PS.isStringVal(dist.rvName):
+                    strVals = PS.getValues(dist.rvName)
+                    for j in range(len(strVals)):
+                        strVal = strVals[j]
+                        numVal = int(PS.getNumValue(dist.rvName, strVal))
+                        stringVals.append((numVal, strVal))
+                    stringVals.sort()
+                bounds = dist.truncation()
+                isBoundedL = not isDiscrete and bounds[0] is not None
+                isBoundedU = not isDiscrete and bounds[1] is not None
+                boundL = boundU = 0.0
+                if isBoundedL:
+                  boundL = bounds[0]
+                if isBoundedU:
+                  boundU = bounds[1]
+                modality = dist.modality()
+
+                yield ( id,
+                        inQueries[i],
+                        dist.N,
+                        isDiscrete,
+                        isCategorical,
+                        float(dist.minVal()),
+                        float(dist.maxVal()),
+                        dist.E(),
+                        dist.stDev(),
+                        dist.skew(),
+                        dist.kurtosis(),
+                        float(dist.median()),
+                        float(dist.mode()),
+                        [isBoundedL, isBoundedU],
+                        [boundL, boundU],
+                        modality,
+                        hist,
+                        deciles,
+                        stringVals
+                        )
+        except:
+            from because.hpcc_utils import format_exc
+            assert False, format_exc.format('QueryDistr')
+    ENDEMBED;
     /**
       * Calculate causal metrics: Average Causal Effect, Controlled Direct Affect, and Indirect Effect
       * for a list of variable pairs.
@@ -255,26 +352,17 @@ EXPORT cModel := MODULE
       * The work is divvied up among the nodes, so is fully parallelized.
       *
       */
-    EXPORT STREAMED DATASET(cMetrics) Metrics(STREAMED DATASET(ProbQuery) queries, UNSIGNED pwr, UNSIGNED cm) := 
+    EXPORT STREAMED DATASET(cMetrics) Metrics(STREAMED DATASET(MetricQuery) queries, UNSIGNED pwr, UNSIGNED cm) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
         import numpy as np
-        assert 'CM' in globals(), 'cModel.Metrics: CM is not initialized.'
+        assert 'CMDict' in globals(), 'cModel.Metrics: CMDict is not initialized.'
+        assert cm in CMDict, 'cModel.Metrics: invalid cModel id = ' + str(cm)
+        CM = CMDict[cm]
         try:
             results = []
             for query in queries:
                 targets = []
-                id, targs, conds, dolist = query[:4]
-                for targ in targs:
-                    var, args = targ
-                    assert len(args) == 0, 'cModel.Metrics: Target must be unbound (i.e. No arguments provided).'
-                    targSpec = var
-                    targets.append(targSpec)
-                assert len(targets) == 2, 'cModel.Metrics:  Metrics require two unbound targets ' + str(len(targets)) + ' were given.'
-                interventions = []
-                assert len(conds) == 0, 'cModel.Metrics: Conditions are not allowed in metrics query.'
-                assert len(dolist) == 0, 'cModel.Metrics: Interventions are not allowed in metrics query.'
-                cause = targets[0]
-                effect = targets[1]
+                id, cause, effect = query
                 ace = CM.ACE(cause, effect, power=pwr)
                 cde = CM.CDE(cause, effect, power=pwr)
                 cie = ace - cde
@@ -312,7 +400,9 @@ EXPORT cModel := MODULE
       */
     EXPORT DATASET(Cache) pyGetCache(STREAMED DATASET(varsRec) vars, UNSIGNED cm, UNSIGNED pynode, UNSIGNED pynnodes, UNSIGNED order=3, UNSIGNED pwr=1) := 
                 EMBED(Python: globalscope(globalScope), persist('query'), activity)
-        assert 'CM' in globals(), 'cModel.getCache: CM is not initialized.'
+        assert 'CMDict' in globals(), 'cModel.pyGetCache: CMDict is not initialized.'
+        assert cm in CMDict, 'cModel.pyGetCache: invalid cModel id = ' + str(cm)
+        CM = CMDict[cm]
         try:
             indCache = {}
             dirCache = {}
@@ -372,7 +462,9 @@ EXPORT cModel := MODULE
     SHARED ScanReport pyScanModel(UNSIGNED pwr, UNSIGNED cm, DATASET(cache) pycache=DATASET([], cache)) := 
             EMBED(Python: globalscope(globalScope), persist('query'))
         from because.causality import cscan
-        assert 'CM' in globals(), 'cModel.pyDiscoverModel: CM is not initialized.'
+        assert 'CMDict' in globals(), 'cModel.pyScanModel: CMDict is not initialized.'
+        assert cm in CMDict, 'cModel.pyScanModel: invalid cModel id = ' + str(cm)
+        CM = CMDict[cm]
         try:
             dirCache = {}
             for rec in pycache:
@@ -430,7 +522,9 @@ EXPORT cModel := MODULE
     SHARED DATASET(DiscResult) pyDiscModel(SET OF STRING vars, REAL pwr, REAL sensitivity, UNSIGNED depth, UNSIGNED cm, DATASET(cache) pycache=DATASET([], cache)) := 
             EMBED(Python: globalscope(globalScope), persist('query'))
         from because.causality import cdisc
-        assert 'CM' in globals(), 'cModel.pyDiscModel: CM is not initialized.'
+        assert 'CMDict' in globals(), 'cModel.pyDiscModel: CMDict is not initialized.'
+        assert cm in CMDict, 'cModel.pyDiscModel: invalid cModel id = ' + str(cm)
+        CM = CMDict[cm]
         #assert False, 'pwr, sensitivity, depth = ' + repr(pwr) + ', ' + repr(sensitivity) + ', ' + repr(depth)
         try:
             dirCache = {}

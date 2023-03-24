@@ -5,12 +5,15 @@ IMPORT HPCC_Causality.internal.cModel;
 
 cModelTyp := Types.cModel;
 validationReport := Types.validationReport;
+MetricQuery := Types.MetricQuery;
 cMetrics := Types.cMetrics;
 ProbQuery := Types.ProbQuery;
 Distr := Types.Distribution;
 ScanReport := Types.ScanReport;
 DiscResult := Types.DiscoveryResult;
-
+nlQuery := Types.nlQuery;
+nlQueryRslt := Types.nlQueryRslt;
+AnyField := Types.AnyField;
 NumericField := cTypes.NumericField;
 
 /**
@@ -88,7 +91,22 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
     END;
 
     /**
-      * Calculate the results of a Causal Intervention.
+      * Calculate the distributions resulting from  a set of Causal Probability Queries.
+      *
+      * Causal Proabability queries are a superset of probability queries that may
+      * contain an intervention (i.e. do()) clause.
+      * 
+      * If no do() clause is present, then the results will be the same as a normal 
+      * probability query.
+      *
+      * The target portion must specify a bare (unbound) variable, as we are looking
+      * for a distribution as a result.
+      * 
+      * Do() clauses are specified within the "given" portion of the query, and
+      * can only use equality designation.  For example:
+      *   'P(A | do(B=1, C=2), D between [-1,3])'
+      * This is the probability distribution of A given that D is between -1 and 3,
+      * and that we intervened to force the value of B to 1 and the value of C to 2.
       *
       * Interventions simulate the effect of setting a variable or variables
       * to fixed values, while breaking the links from those variables' parents.
@@ -96,23 +114,73 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
       * for each query.  This is roughly equivalent to performing a randomized
       * study.
       *
-      * Interventions are of the form:
-      * - Distribution = (Var | List of interventions)
       *
       * @param queries A list of queries.  Exactly 1 target per query must be specified,
-      *        and the target must be unbound (i.e. with zero arguments).  One or more
+      *        and the target must be unbound (i.e. with no comparitor).  One or more
       *        interventions can be provided for each variable.  Interventions must be
-      *        of an exact value (e.g. do(var = value)).  This is indicated by a single
-      *        arg in the intervention ProbSpec.
+      *        of an exact value (e.g. do(var = value)).
       *
       * @return A set of Types.Distr records, describing each of the queried distributions.
       *
       */
-    EXPORT DATASET(Distr) Intervene(DATASET(ProbQuery) queries, UNSIGNED pwr=1) := FUNCTION
-        queries_D := DISTRIBUTE(queries, id);
-        distrs := cModel.Intervene(queries_D, pwr, CM);
-        distrs_S := SORT(distrs, id);
-        RETURN distrs_S;
+    EXPORT DATASET(Distr) QueryDistr(SET OF STRING queries, UNSIGNED pwr=1) := FUNCTION
+      dummy := DATASET([{1}], {UNSIGNED d});
+      queryRecs := NORMALIZE(dummy, COUNT(queries), TRANSFORM(nlQuery, SELF.id:=COUNTER, 
+              SELF.query:=queries[COUNTER]));
+      queries_D := DISTRIBUTE(queryRecs, id);
+      distrs := cModel.QueryDistr(queries_D, CM);
+      distrs_S := SORT(distrs, id);
+      RETURN distrs_S;
+    END;
+
+    /**
+      * Calculate the probabilities or expectations resulting from  a set of 
+      * Causal Probability Queries.
+      *
+      * Causal Proabability queries are a superset of probability queries that may
+      * contain an intervention (i.e. do()) clause.
+      * 
+      * If no do() clause is present, then the results will be the same as a normal 
+      * probability query.
+      *
+      * Probabilities or expectations may be requested by the query. For example:
+      *   'P(A between [1,3] | B < 0)' # The probability that A is between 1 and 3 given
+      *                                # that B is less than zero.
+      *   'E(A | B < 0)'               # The expected value of A given that B is less than
+      *                                # zero.
+      *
+      * Note that for probability queries that the target must be "bound" (i.e. includes a
+      * comparison), while for expectation queries, the target must be "unbound" (i.e. a bare
+      * variable name).
+      *
+      * Do() clauses are specified within the "given" portion of the query, and
+      * can only use equality designation.  For example:
+      *   'E(A | do(B=1, C=2), D between [-1,3])'
+      * This is the expected value of A given that D is between -1 and 3,
+      * and that we intervened to force the value of B to 1 and the value of C to 2.
+      *
+      * Interventions simulate the effect of setting a variable or variables
+      * to fixed values, while breaking the links from those variables' parents.
+      * The distribution of a target variable given the interventions is returned
+      * for each query.  This is roughly equivalent to performing a randomized
+      * study.
+      *
+      * @param queries A list of queries.  One or more
+      *        interventions can be provided for each variable.  Interventions must be
+      *        of an exact value (e.g. do(var = value)).
+      *
+      * @return A set of Types.AnyField records, containing the numeric (or textual).
+      *        result of each query.
+      *
+      */
+    EXPORT DATASET(nlQueryRslt) Query(SET OF STRING queries, UNSIGNED pwr=1) := FUNCTION
+      dummy := DATASET([{1}], {UNSIGNED d});
+      queryRecs := NORMALIZE(dummy, COUNT(queries), TRANSFORM(nlQuery, SELF.id:=COUNTER, 
+              SELF.query:=queries[COUNTER]));
+      queries_D := DISTRIBUTE(queryRecs, id);
+      results := cModel.Query(queries_D, CM);
+      results_S := SORT(results, id);
+      RETURN results_S;
     END;
 
     /**
@@ -134,7 +202,7 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
       *     id of the original query.
       *
       */
-    EXPORT DATASET(cMetrics) Metrics(DATASET(ProbQuery) queries, UNSIGNED pwr=1) := FUNCTION
+    EXPORT DATASET(cMetrics) Metrics(DATASET(MetricQuery) queries, UNSIGNED pwr=1) := FUNCTION
         queries_D :=  DISTRIBUTE(queries, id);
         metrics := cModel.Metrics(queries_D, pwr, CM);
         metrics_S := SORT(metrics, id);

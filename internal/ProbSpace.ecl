@@ -40,8 +40,6 @@ EXPORT ProbSpace := MODULE
                             EMBED(Python: globalscope(globalScope), persist('query'), activity)
             from because.probability import ProbSpace
             from because.hpcc_utils import globlock # Global lock
-            globlock.allocate()
-            globlock.acquire()
             global extractSpec
             def _extractSpec(inSpecs):
                 """
@@ -72,14 +70,12 @@ EXPORT ProbSpace := MODULE
                     outSpecs.append(outSpec)
                 return outSpecs
             extractSpec = _extractSpec
+            globlock.allocate()
+            globlock.acquire()
             global PSDict
-            if 'PSDict' in globals() and len(PSDict) >= 1:
-                # Probspace already allocated on this node (by another thread).  We're done.
-                # Release the global lock
-                globlock.release()
-                return [(len(PSDict),)]
             try:
-                PSDict = {}
+                if 'PSDict' not in globals():
+                    PSDict = {}
                 DS = {}
                 varMap = {}
                 for i in range(len(vars)):

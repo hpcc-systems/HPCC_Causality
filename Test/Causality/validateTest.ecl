@@ -1,8 +1,7 @@
 /**
   * Test and example for Model Validation.
   *
-  * Uses the Synth module to generate M2 model.
-  * Tests against the M8 model definition:
+  * Uses the Synth module to generate M8 model:
   * B is Exogenous
   * F is Exogenous
   * G is Exogenous
@@ -59,7 +58,10 @@ mod := DATASET([{'M8', RVs}], Types.cModel);
 OUTPUT(mySEM, NAMED('SEM'));
 OUTPUT(mod, NAMED('Model'));
 
-cm := HPCC_Causality.Causality(mod, testDat);
+// Create a Probability Space (ProbSpace) given the test data.
+prob := HPCC_Causality.Probability(testDat, semRow.varNames);
+// Create a causal graph given the ProbSpace and the Causal Module
+cg := HPCC_Causality.Causality(mod, prob.PS);
 
-rept := cm.ValidateModel(order:=1, strength:=1);
+rept := cg.ValidateModel(order:=1, strength:=1);
 OUTPUT(rept, NAMED('ValidationReport'));
