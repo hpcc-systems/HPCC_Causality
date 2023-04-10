@@ -1,0 +1,42 @@
+{
+  "name": "hpcc_causality",
+  "private": true,
+  "version": "0.0.0",
+  "description": "",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "clean": "rimraf lib* types dist res/*.js res/*.map",
+    "esbuild": "esbuild ./src/index.ts --bundle --sourcemap --format=esm --outdir=./res",
+    "build": "npm run esbuild -- --minify",
+    "serve": "npm run esbuild -- --watch --serve --servedir=.",
+    "link-hpcc-js": "mklink /J hpcc-js ..\\hpcc-js",
+    "lint": "tslint --project . src/**/*.ts",
+    "docs": "typedoc --options tdoptions.json .",
+    "update": "npx npm-check-updates -u -t minor",
+    "update-major": "npx npm-check-updates -u"
+  },
+  "dependencies": {
+    "@hpcc-js/comms": "2.82.1",
+    "@hpcc-js/observablehq-compiler": "1.2.5",
+    "@hpcc-js/util": "2.50.2",
+    "@observablehq/runtime": "5.5.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.17.11",
+    "npm-run-all": "4.1.5",
+    "rimraf": "4.4.0",
+    "tslib": "2.5.0",
+    "typescript": "4.9.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hpcc-systems/DataPatterns.git"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/hpcc-systems/DataPatterns/issues"
+  },
+  "homepage": "https://github.com/hpcc-systems/DataPatterns"
+}

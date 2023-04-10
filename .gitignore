@@ -1,4 +1,9 @@
 *.csv
 *.log
 *__pycache__*
-.vscode
+.vscode/settings.json
+resources/dist
+resources/node_modules
+resources/lib-*
+resources/res/*.map
+resources/types

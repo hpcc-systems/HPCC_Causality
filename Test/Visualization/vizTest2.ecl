@@ -1,4 +1,4 @@
-IMPORT HPCC_causality AS HC;
+IMPORT $.^.^ AS HC;
 IMPORT HC.Types;
 
 Probability := HC.Probability;
