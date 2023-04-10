@@ -184,7 +184,7 @@ EXPORT Types := MODULE
       */
     EXPORT RV := RECORD
         STRING Name;
-        SET OF STRING Parents;
+        SET OF STRING Parents := [];
         BOOLEAN isObserved := TRUE;
         DatTypeEnum DataType := DatTypeEnum.None;
     END;
