@@ -3,6 +3,8 @@ IMPORT HPCC_Causality.Types;
 IMPORT ML_Core.Types AS cTypes;
 IMPORT HPCC_Causality.internal.cModel;
 
+powerDefault := 1;
+
 cModelTyp := Types.cModel;
 validationReport := Types.validationReport;
 MetricQuery := Types.MetricQuery;
@@ -47,15 +49,15 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
       *     Higher values lead to exponentially increasing run times, and diminishing
       *     evaluation accuracy.  Very large datasets are required in order to evaluate
       *     higher order evaluations (default=3, recommended).
-      * @param strength The thoroughness to be used in conditionalizing on variables.
-      *     Allows a tradeoff between run-time and certainty of discrimination.  Strength
+      * @param pwr Power. The thoroughness to be used in conditionalizing on variables.
+      *     Allows a tradeoff between run-time and certainty of discrimination.  Power
       *     = 1 is sufficient to distinguish linear relationships, where higher numbers
       *     are needed to distinguish subtle non-linear relationships.  Range [1,100].
-      *     For practical purposes, strength > 5 should not be needed. Default = 1.
+      *     For practical purposes, power > 5 should not be needed. Default = 1.
       * @return A detailed validation report in Types.ValidationReport format
       * @see Types.ValidationReport
       */
-    EXPORT ValidationReport ValidateModel(UNSIGNED order=3, UNSIGNED strength=1) := FUNCTION
+    EXPORT ValidationReport ValidateModel(UNSIGNED order=3, REAL pwr=powerDefault, REAL sensitivity=10) := FUNCTION
         ValidationReport rollupReport(ValidationReport l, ValidationReport r) := TRANSFORM
             SELF.confidence := 0.0;
             SELF.NumTotalTests := l.NumTotalTests + r.NumTotalTests;
@@ -77,7 +79,7 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
             SELF.Errors := l.Errors + r.Errors;
             SELF.Warnings := l.Warnings + r.Warnings;
         END;
-        results0 := cModel.TestModel(order, strength, CM);
+        results0 := cModel.TestModel(order, pwr, sensitivity, CM);
         results1 := ROLLUP(results0, TRUE, rollupReport(LEFT, RIGHT));
         resultsRec := results1[1];
         score := cModel.ScoreModel(resultsRec.NumTestsPerType,
@@ -123,7 +125,7 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
       * @return A set of Types.Distr records, describing each of the queried distributions.
       *
       */
-    EXPORT DATASET(Distr) QueryDistr(SET OF STRING queries, UNSIGNED pwr=1) := FUNCTION
+    EXPORT DATASET(Distr) QueryDistr(SET OF STRING queries, REAL pwr=powerDefault) := FUNCTION
       dummy := DATASET([{1}], {UNSIGNED d});
       queryRecs := NORMALIZE(dummy, COUNT(queries), TRANSFORM(nlQuery, SELF.id:=COUNTER, 
               SELF.query:=queries[COUNTER]));
@@ -173,7 +175,7 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
       *        result of each query.
       *
       */
-    EXPORT DATASET(nlQueryRslt) Query(SET OF STRING queries, UNSIGNED pwr=1) := FUNCTION
+    EXPORT DATASET(nlQueryRslt) Query(SET OF STRING queries, REAL pwr=powerDefault) := FUNCTION
       dummy := DATASET([{1}], {UNSIGNED d});
       queryRecs := NORMALIZE(dummy, COUNT(queries), TRANSFORM(nlQuery, SELF.id:=COUNTER, 
               SELF.query:=queries[COUNTER]));
@@ -202,7 +204,7 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
       *     id of the original query.
       *
       */
-    EXPORT DATASET(cMetrics) Metrics(DATASET(MetricQuery) queries, UNSIGNED pwr=1) := FUNCTION
+    EXPORT DATASET(cMetrics) Metrics(DATASET(MetricQuery) queries, REAL pwr=powerDefault) := FUNCTION
         queries_D :=  DISTRIBUTE(queries, id);
         metrics := cModel.Metrics(queries_D, pwr, CM);
         metrics_S := SORT(metrics, id);
@@ -232,12 +234,12 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
       *
       * 
       */
-    EXPORT DATASET(ScanReport) ScanModel( UNSIGNED pwr=1) := FUNCTION
+    EXPORT DATASET(ScanReport) ScanModel( REAL pwr=powerDefault) := FUNCTION
         rpt := cModel.ScanModel(pwr, CM);
         RETURN rpt;
     END;
 
-    EXPORT DATASET(DiscResult) DiscoverModel(SET OF STRING vars,  REAL pwr=5, REAL sensitivity=10, UNSIGNED depth=2) := FUNCTION
+    EXPORT DATASET(DiscResult) DiscoverModel(SET OF STRING vars,  REAL pwr=powerDefault, REAL sensitivity=10, UNSIGNED depth=2) := FUNCTION
       result := cModel.DiscoverModel(vars, pwr, sensitivity, depth, CM);
       RETURN result;
     END;

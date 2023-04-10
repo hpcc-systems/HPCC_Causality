@@ -119,7 +119,7 @@ EXPORT cModel := MODULE
       * is fully paralellized.  Calculating the final score is light weight.  
       *
       */
-    EXPORT STREAMED DATASET(ValidationReport) TestModel(UNSIGNED order, UNSIGNED power, UNSIGNED cm) := 
+    EXPORT STREAMED DATASET(ValidationReport) TestModel(UNSIGNED order, REAL pwr, REAL sensitivity, UNSIGNED cm) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
         assert 'CMDict' in globals(), 'cModel.TestModel: CMDict is not initialized.'
         assert cm in CMDict, 'cModel.TestModel: invalid cModel id = ' + str(ps)
@@ -140,7 +140,8 @@ EXPORT cModel := MODULE
                 # by one node.
                 if NODE == i % NNODES:
                     myEdges.append(edges[i])
-            rep = CM.TestModel(order = order, power=power, deps = myDeps, edges = myEdges)
+            rep = CM.TestModel(order = order, power=pwr, sensitivity=sensitivity, deps = myDeps, edges = myEdges)
+            #assert(False, 'rep = ' + str(rep))
             conf, numTotal, numPerType, numErrsPerType, numWarnsPerType, errorDetails, warnDetails = rep
             errStrs = [err[6] for err in errorDetails]
             warnStrs = [warn[6] for warn in warnDetails]
@@ -237,6 +238,31 @@ EXPORT cModel := MODULE
             assert False, format_exc.format('cModel.Intervene')
     ENDEMBED;
 
+    /**
+      * Call the causality.P() (Probability) function or E() (Expectation)
+      * function with a set of natural language causal queries.  Returns a
+      * value (numeric or string).
+      *
+      * Causal Queries are a superset of probability queries.  They allow
+      * an intervention clause (i.e. do(...)) to be specified.  A mixture
+      * of probability and causal queries may be provided.
+      *
+      * Queries should be of type Probability (i.e. P), or Expectation (i.e. E), 
+      * and the target variable(s) must be bound (i.e. include a comparator) for P(...) or
+      * unbound (i.e. have no comparison operator -- a bare variable name) for E(...).
+      * Multiple targets may be specified in the case of P(...), indicating joint probabilities.
+      *
+      * Examples:
+      *   P(Income > 3, Employed=no | Age > 65) -- The probability that income is greater than 3
+      *                             and unemployed for people over 65 (Joint conditional probability).
+      *   E(Income | Age > 65 do('Employed=yes')) -- The Expected value of income
+      *                             for people over 65, if we intervened such that
+      *                             everyone was employed. (Conditional expectation plus intervention)
+      *
+      * Queries are distributed among nodes so that they run in parallel.
+      * Returns values as Types.nlQueryRslt dataset
+      *
+      */
     EXPORT STREAMED DATASET(nlQueryRslt) Query(STREAMED DATASET(nlQuery) queries, UNSIGNED cm) := 
         EMBED(Python: globalscope(globalScope), persist('query'), activity)
         from because.causality import cquery
@@ -266,9 +292,23 @@ EXPORT cModel := MODULE
 
     /**
       * Call the causality.distr() function with a set of natural language
-      * queries.
+      * causal queries.  Returns a distribution.
       *
-      * Queries are distributed among nodes so that the run in parallel.
+      * Causal Queries are a superset of probability queries.  They allow
+      * an intervention clause (i.e. do(...)) to be specified.  A mixture
+      * of probability and causal queries may be provided.
+      *
+      * Queries should be of type Probability (i.e. P), and the target variable
+      * must be unbound (i.e. have no comparison operator -- a bare variable name).
+      *
+      * Examples:
+      *   'P(Income | Age > 65)' -- The probability distribution of income
+      *                             for people over 65.
+      *   'P(Income | Age > 65, do(Employed=yes))' -- The probability distribution
+      *                             for people over 65, if we intervened such that
+      *                             everyone was employed. 
+      *
+      * Queries are distributed among nodes so that they run in parallel.
       * Returns distributions as Types.Distribution dataset
       *
       */
