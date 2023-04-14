@@ -26,15 +26,17 @@ NumericField := cTypes.NumericField;
   * Methods include:
   * - ValidateModel -- Analyze the data against the provided causal model and
   *         evaluate the degree of correspondence between the two.
-  * - Intervene -- Simulate the effect on a target variable of a causal 
-  *     intervention on one or more variable
+  * - Causal (or Probabilistic) Query.  This is a superset of probability queries,
+  *     adding  support for causal interventions  that simulate the effect on a target variable of a causal 
+  *     intervention on one or more variable.  See Query for details.
   * - Metrics -- Evaluate various causal metrics on desgnated pairs 
   *      [source, destination] of variables.
   *
   * @param mod A causal model in DATASET(cModel) format.  The dataset should
   *    contain only a single record, defining the model.
-  * @param dat The data in NumericField format.  The field number should
-  *    correspond to the order of variables specified in the model.
+  * @param PS The id of a Probability Space or Subspace containing the
+  *    dataset. This is obtained by <probabilityInstance>.PS, or as returned from
+  *    a probability.SubSpace() call.
   *
   * @see Types.cModel
   * @see ML_Core.Types.NumericField
@@ -54,6 +56,7 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
       *     = 1 is sufficient to distinguish linear relationships, where higher numbers
       *     are needed to distinguish subtle non-linear relationships.  Range [1,100].
       *     For practical purposes, power > 5 should not be needed. Default = 1.
+      * @param sensitivity
       * @return A detailed validation report in Types.ValidationReport format
       * @see Types.ValidationReport
       */
@@ -140,7 +143,7 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
       * Causal Probability Queries.
       *
       * Causal Proabability queries are a superset of probability queries that may
-      * contain an intervention (i.e. do()) clause.
+      * contain an intervention (i.e. do()) specification.
       * 
       * If no do() clause is present, then the results will be the same as a normal 
       * probability query.
@@ -154,6 +157,8 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
       * Note that for probability queries that the target must be "bound" (i.e. includes a
       * comparison), while for expectation queries, the target must be "unbound" (i.e. a bare
       * variable name).
+      *
+      * For details of the query syntax, see the README file.
       *
       * Do() clauses are specified within the "given" portion of the query, and
       * can only use equality designation.  For example:

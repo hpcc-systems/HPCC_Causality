@@ -64,5 +64,5 @@ prob := HPCC_Causality.Probability(testDat, semRow.varNames);
 // Create a causal graph given the ProbSpace and the Causal Module
 cg := HPCC_Causality.Causality(mod, prob.PS);
 
-rept := cg.ValidateModel(order:=2, strength:=1);
+rept := cg.ValidateModel(order:=2, pwr:=1);
 OUTPUT(rept, NAMED('ValidationReport'));
