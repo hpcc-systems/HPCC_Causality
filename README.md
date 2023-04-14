@@ -43,8 +43,8 @@ The probability, causality, and Visualization modules share a common query forma
 These queries are provided as close as possible to standard statistical notation, with causal extensions as used by Pearl[1].
 
 For example:
-- 'P(height > 60 | gender = female)' -- The probability that height is greater than 60 (inches) given that gender is female.
-- 'P(height > 60, weight between [100,150] | gender = female, age >= 20)' -- The joint probability that height is > 60 and weight is between
+- **'P(height > 60 | gender = female)'** -- The probability that height is greater than 60 (inches) given that gender is female.
+- **'P(height > 60, weight between [100,150] | gender = female, age >= 20)'** -- The joint probability that height is > 60 and weight is between
       100 and 150 (pounds) given that gender is female and age is greater than or equal 20.
-- 'E(income | genhealth in [good, verygood, excellent])' -- The expectation of income given that general health is good, verygood, or excellent.
+- **'E(income | genhealth in [good, verygood, excellent])'** -- The expectation of income given that general health is good, verygood, or excellent.
 
