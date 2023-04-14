@@ -13,6 +13,13 @@ The above methods are computationally intense, and are fully parallelized when r
 
 It is built on the underlying capabilities of the Python-based "Because" Causal Analytic Library.
 
+## New in Version 2.0
+- Support for textual as well as numeric data fields.
+- Expanded set of supported data types:  Continuous, Discrete Numeric, Ordered Text, Categorical Numeric, Categorical Text.
+- Natural text based queries provide a simplified interface.
+- Extensive visualization library providing a wide range of plots.
+- Enhanced probabiliistic and causal algorithms.
+
 ## Installation
 
 This bundle requires python3, PIP,  and "Because" on each HPCC Node
@@ -47,4 +54,4 @@ For example:
 - **'P(height > 60, weight between [100,150] | gender = female, age >= 20)'** -- The joint probability that height is > 60 and weight is between
       100 and 150 (pounds) given that gender is female and age is greater than or equal 20.
 - **'E(income | genhealth in [good, verygood, excellent])'** -- The expectation of income given that general health is good, verygood, or excellent.
-
+- **'P(income > 5 | age > 50, controlFor
