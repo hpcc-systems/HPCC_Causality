@@ -12,7 +12,8 @@
   * E <- C
   *
   */
-IMPORT $.^.^ AS HC;
+  IMPORT HPCC_causality AS HC;
+  // IMPORT $.^.^ AS HC;    // GJS Testing
 IMPORT HC.Types;
 
 IMPORT ML_CORE.Types AS cTypes;
