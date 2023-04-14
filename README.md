@@ -50,8 +50,15 @@ The probability, causality, and Visualization modules share a common query forma
 These queries are provided as close as possible to standard statistical notation, with causal extensions as used by Pearl[1].
 
 For example:
-- **'P(height > 60 | gender = female)'** -- The probability that height is greater than 60 (inches) given that gender is female.
-- **'P(height > 60, weight between [100,150] | gender = female, age >= 20)'** -- The joint probability that height is > 60 and weight is between
+- **'P(height > 65 | gender = female)'** -- The probability that height is greater than 65 (inches) given that gender is female.
+- **'P(height > 65, weight between [100,150] | gender = female, age >= 20)'** -- The joint probability that height is > 65 and weight is between
       100 and 150 (pounds) given that gender is female and age is greater than or equal 20.
 - **'E(income | genhealth in [good, verygood, excellent])'** -- The expectation of income given that general health is good, verygood, or excellent.
-- **'P(income > 5 | age > 50, controlFor
+- **'E(income | age > 50, controlFor(gender, genhealth))'** -- The expectation of income given that age > 50, controlling for gender and general health.
+- **'E(income | do(age=50))'** -- The expectation of income given that we perform a causal intervention, setting the age to 50, and correcting for non-causal influences.
+  
+There are minor differences in the query semantics between the three use cases: probability, causal query, and visualizations.
+-  Probability supports two types of query:
+  - Scalar Query -- Returns a single value.  For example: P(A = 5), E(A)
+  - Distribution Query -- Returns a 'distribution' structure. For example: P(A), P(A | B > 0).
+- Causality provides a superset of probability queries, that may also contain a 'do()' clause, specifying one or more causal intervention.  Causal queries require the specification of a 'causal model' in addtion to the query.  
