@@ -12,8 +12,9 @@
   * E <- C
   *
   */
-  IMPORT HPCC_causality AS HC;
-  // IMPORT $.^.^ AS HC;    // GJS Testing
+
+IMPORT HPCC_causality AS HC;
+ 
 IMPORT HC.Types;
 
 IMPORT ML_CORE.Types AS cTypes;
@@ -32,7 +33,7 @@ nTestRecs := 100000;
 // SEM is Model M8.
 semRow := ROW({
     [],
-    ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'], // Variable names
+    ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'], // Variable names
     // Equations
     ['B = logistic(0,1)',  // Can use any distribution defined in numpy.random
     'F = logistic(0,1)',
@@ -41,7 +42,8 @@ semRow := ROW({
     'D = tanh(A + G * 2.0) + logistic(0,.4)',
     'C = tanh(B + A + D) + logistic(0,.4)',
     'E = C + logistic(0,.4)',
-    'H = "small" if E < 0 else "med" if E < 1 else "large"'
+    'H = "small" if E < 0 else "med" if E < 1 else "large"',
+    'I = beta(2,5)'
     ]}, SEM);
 
 mySEM := DATASET([semRow], SEM);
@@ -67,15 +69,23 @@ OUTPUT(mySEM, NAMED('SEM'));
 
 prob := Probability(testDat, semRow.VarNames, categoricals:=['H']);
 
-queries := [
-    'P(A)',
-    'P(A|B)',
-    'E(D | A)',
-    'E(D | A, G)',
-    'P(H = med | E)',
-    'Correlation(A,B,C,D,E,F,G,H)',
-    'CModel()'
-    ];
+// queries := [
+//     'P(A)',
+//     'P(A|B)',
+//     'E(D | A)',
+//     'E(D | A, G)',
+//     'P(H = med | E)',
+//     'Correlation(A,B,C,D,E,F,G,H)',
+//     'CModel()'
+//     ];
+pq := viz.parseQuery('P(I)', prob.PS);
+gr := viz.getGrid(pq, prob.PS);
 
+OUTPUT(gr, NAMED('grid'));
+
+queries := [
+    'P(I)',
+    'P(A|B)'
+    ];
 viz.Plot(queries, prob.PS);
  

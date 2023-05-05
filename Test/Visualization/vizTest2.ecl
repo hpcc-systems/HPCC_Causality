@@ -71,22 +71,38 @@ summary3 := prob.Summary(femalesPS);
 
 OUTPUT(summary3, NAMED('DatasetSummaryFemales'));
 
-tests := ['P(height <= 66)'];
+tests := ['E(height | gender=male)',
+          'E(height | gender=female)'];
 
 results := prob.Query(tests);
 
+OUTPUT(results, NAMED('ProbResults'));
+
 //query := 'P(genhealth in [4,5] | state)';
-query := 'CModel(height, weight, income, genhealth | $sensitivity=6)';
-queries := ['P(genhealth in [4,5] | income)'];
+query := 'P(age)';
+queries := [
+            //'E(weight | height, age, gender=male)'
+            //'E(genhealth | state, controlFor(age, income))'
+            //'E(genhealth | state)'
+            //'P(genhealth = 5-excellent |age)',
+            //'P(genhealth in [3-good, 4-verygood, 5-excellent] | age, income)'
+            //'P(age > 65, gender=male, married=no | genhealth)'
+            //'P(genhealth in [4-verygood, 5-excellent] | state, controlFor(age, income))'
+            //'CORRELATION(gender, income, genhealth, physicalactivity, age, diabetes)',
+            //'DEPENDENCE(gender, income, genhealth, physicalactivity, age, diabetes)'
+            //'CMODEL(gender, age, income, height, weight, physicalactivity, education, genhealth)',
+            //'CMODEL(gender, age, income, height, weight, physicalactivity, education, genhealth | $power=8, $sensitivity=6, $depth=3)'
+            //'P(age | genhealth in [1-poor, 2-fair])',
+            //'P(weight | height, gender=male)'
+            'P(age)',
+            'P(weight | gender=male)',
+            'P(weight | gender = female)'
+            ];
 
 pr := viz.parseQuery(query, prob.PS);
 //OUTPUT(pr);
-vars := viz.getVarNames(pr);
-//OUTPUT(vars);
-g := viz.GetHeatmapGrid(pr, prob.PS);
-//OUTPUT(g);
-//fg := viz.fillHeatmapGrid(g, ['weight', 'height'], 'dep', prob.PS);
-//OUTPUT(fg);
+gr := viz.getGrid(pr, prob.PS);
+OUTPUT(gr, NAMED('Grid'));
 
 cd := viz.GetDataGrid(query, prob.PS);
 //OUTPUT(cd);

@@ -47,7 +47,7 @@ RVs := DATASET([
                 {'IceCream', ['Temperature']},
                 {'Crime', ['Temperature', 'IceCream']}
                 ], Types.RV);
-mod := DATASET([{'M2', RVs}], Types.cModel);
+mod := DATASET([{'Ice Cream', RVs}], Types.cModel);
 
 OUTPUT(mySEM, NAMED('SEM'));
 OUTPUT(mod, NAMED('Model'));

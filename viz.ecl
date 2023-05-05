@@ -123,16 +123,14 @@ EXPORT viz := MODULE
         assert ps in PSDict, 'viz.getHeatmapGrid: invalid probspace id = ' + str(ps)
         PS = PSDict[ps]
         try:
-            # Return grid of [(var1, var2)], undirected.
+            # Return grid of [(var1, var2, power, sensitivity)], undirected.
+            outRecs = []
             for result in presults:
-                power = 0
+                power = 5
                 sensitivity = 5
                 varGrid = []
                 qtype, targs, conds, controls, filters, intervs, cfacs = result
-                if qtype == 'dep':
-                    power = 0
-                else:
-                    power = 5
+                #assert False, 'targs, conds, filters = ' + str((targs, conds, filters))
                 for i in range(len(targs)):
                     targ1 = targs[i]
                     var1 = targ1[0]
@@ -140,17 +138,16 @@ EXPORT viz := MODULE
                         targ2 = targs[j]
                         var2 = targ2[0]
                         varGrid.append((var1, var2))
-                for i in range(len(conds)):
+                for i in range(len(filters)):
                     # Conditions may include only power and or sensitivity specifications.
-                    spec = conds[i]
+                    spec = filters[i]
                     var = spec[0]
-                    assert var in ['power', 'sensitivity'] and len(spec == 2) and type(spec[1]) not in [type((0,)), type([])], \
-                        'Correlation and dependence conditional clause may only contain exact matches for power or sensitivity'
-                    value = spec[1]
-                    if var == 'power' and qtype == 'dep':
-                        # Power is always zero for correlation
+                    assert var in ['$power', '$sensitivity'] and len(spec[1]) == 1, \
+                        'Correlation and dependence conditional clause may only contain exact matches for $power or $sensitivity'
+                    value = spec[1][0]
+                    if var == '$power':
                         power = value
-                    elif var == 'sensitivity':
+                    elif var == '$sensitivity':
                         sensitivity = value
                 for i in range(len(varGrid)):
                     outItems = []
@@ -170,9 +167,12 @@ EXPORT viz := MODULE
                         elif j == 3:
                             val = float(sensitivity)
                             strVal = ''
-                        outItem = (1,j+1, 1,val, strVal)
+                        outItem = (1, j+1, 1, val, strVal)
                         outItems.append(outItem)
-                    yield((i+1, outItems))
+                    outRecs.append((i+1, outItems))
+                    #yield((i+1, outItems))
+            #assert False, 'outRecs = ' + str(outRecs[-5:])
+            return outRecs
         except:
             from because.hpcc_utils import format_exc
             raise RuntimeError(format_exc.format('viz.getHeatmapGrid'))
@@ -259,9 +259,11 @@ EXPORT viz := MODULE
                     conds = allSpecs[:nConds] + filtSpecs + controlSpecs
                     #assert False, 'bprob targs = ' + str(targets) + ', conds = ' + str(conds)
                     result = PS.P(targets, conds)
+                    #assert False, 'targets, conds = ' + str(targets) + ', ' + str(conds) + ',' + str(result)
                 elif queryType == 'expct':
                     targets = allSpecs[-1:]
                     conds = allSpecs[:-1] + filtSpecs + controlSpecs
+                    #assert False, 'E: targets, conds = ' + str(targets) + ', ' + str(conds)
                     result = PS.E(targets, conds)
                     if len(condVars) == 1:
                         d = PS.distr(targets, conds)
@@ -306,6 +308,7 @@ EXPORT viz := MODULE
                         terms.append(textVal)
                     else:
                         terms.append(value)
+                #assert False, 'varspecs = ' + str(varSpecs)
                 rangesTup = (0.0, 0.0, 0.0, 0.0)
                 var1 = varSpecs[0][0]
                 var2 = varSpecs[1][0]
@@ -323,7 +326,7 @@ EXPORT viz := MODULE
                 yield (id,) + tuple(gridValsR) + rangesTup
         except:
             from because.hpcc_utils import format_exc
-            raise RuntimeError(format_exc.format('viz.fillHeatmipGrid'))
+            raise RuntimeError(format_exc.format('viz.fillHeatmapGrid'))
     ENDEMBED; // fillHeatmapGrid
 
     EXPORT STREAMED DATASET(ChartData) fillDiscGrid(SET OF STRING vars, DATASET(parseVar) conds, UNSIGNED ps) := FUNCTION
@@ -475,11 +478,11 @@ EXPORT viz := MODULE
         //testGrid := getGrid(qresults, PS);
         testGrid_D := DISTRIBUTE(testGrid, id);
         vars := getVarNames(qresults);
-        conds := qresult.conds; // fillDatagrid and fillDiscGrid need the conditional clause.
+        filters := qresult.filters; // fillDiscGrid needs the filters to get the special params.
         controls := qresult.controls; // fillDatagrid needs the controFor variables
         dataGrid := IF(queryType = 'dep' OR queryType = 'cor',
-            fillHeatmapGrid(testGrid_D, vars, queryType, conds, PS), IF(queryType = 'cmodel',
-            fillDiscGrid(vars, conds, PS),
+            fillHeatmapGrid(testGrid_D, vars, queryType, filters, PS), IF(queryType = 'cmodel',
+            fillDiscGrid(vars, filters, PS),
             fillDataGrid(testGrid_D, qresults, PS)));
         //dataGrid := fillDataGrid(testGrid_D, vars, queryType, PS);
         dataGrid_S := IF(needSorting(queryType, vars, PS)[1].val, SORT(dataGrid, y_), SORT(dataGrid, id));
@@ -496,8 +499,8 @@ EXPORT viz := MODULE
             for result in qresults:
                 # Should be only one RECORD
                 querytype, targs, conds, controls, filters, intervs, cfac = result
-            target = vars[-1]
-            conds = vars[:-1]
+            targetvars = vars[len(conds):]
+            condvars = vars[:len(conds)]
             dims = 2
             if querytype == 'prob':
                 if len(vars) == 1:
@@ -519,8 +522,8 @@ EXPORT viz := MODULE
                             vals = [tuple(vals)]
                         filtSpec = (var,) + tuple(vals)
                         filtSpecs.append(filtSpec)
-                    mean = PS.E(target, filtSpecs)
-                    d = PS.distr(target, filtSpecs)
+                    mean = PS.E(targetvars[0], filtSpecs)
+                    d = PS.distr(targetvars[0], filtSpecs)
                     ranges = [5, 16, 84, 95]
                     r2low = d.percentile(ranges[0])
                     r1low = d.percentile(ranges[1])
@@ -543,36 +546,36 @@ EXPORT viz := MODULE
             elif querytype == 'cprob':
                 dims = 3
                 title = 'Probability Plot -- ' + query
-                xlabel = conds[0]
+                xlabel = condvars[0]
                 ylabel = 'x'
-                zlabel = 'P(' + target + ' = x | ' + conds[0] + ')'
+                zlabel = 'P(' + targetvars[0] + ' = x | ' + condvars[0] + ')'
                 info = (dataname, querytype, dims, title, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
             elif querytype == 'bprob':
                 dims = 2
                 title = 'Probability Plot -- ' + query
                 zlabel = ''
-                if len(conds) == 1:
+                if len(condvars) == 1:
                     dims = 2
-                    xlabel = conds[0]
+                    xlabel = condvars[0]
                     ylabel = query
-                elif len(conds) == 2:
+                elif len(condvars) == 2:
                     dims = 3
-                    xlabel = conds[0]
-                    ylabel = conds[1]
+                    xlabel = condvars[0]
+                    ylabel = condvars[1]
                     zlabel = query
                 info = (dataname, querytype, dims, title, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
             elif querytype == 'expct':
                 title = 'Expectation Plot -- ' + query
                 zlabel = ''
-                if len(conds) == 1:
+                if len(condvars) == 1:
                     dims = 2
-                    xlabel = conds[0]
-                    ylabel = 'E(' + target + ' | ' + conds[0] + ')'
-                elif len(conds) == 2:
+                    xlabel = condvars[0]
+                    ylabel = 'E(' + targetvars[0] + ' | ' + condvars[0] + ')'
+                elif len(condvars) == 2:
                     dims = 3
-                    xlabel = conds[0]
-                    ylabel = conds[1]
-                    zlabel = 'E(' + target + ' | ' + conds[0] + ', ' + conds[1]+ ')'
+                    xlabel = condvars[0]
+                    ylabel = condvars[1]
+                    zlabel = 'E(' + targetvars[0] + ' | ' + condvars[0] + ', ' + condvars[1]+ ')'
                 info = (dataname, querytype, dims, title, xlabel, ylabel, zlabel, 0.0, 0.0, 0.0, 0.0, 0.0)
             elif querytype in ['dep', 'cor']:
                 # Dependence or correlation heatmap

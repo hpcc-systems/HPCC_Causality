@@ -231,10 +231,14 @@ EXPORT ProbSpace := MODULE
                 targets = targets[0]
                 conditions = extractSpec(conds)
                 result = PS.E(targets, conditions)
-                if type(result) == type(''):
-                    results.append((1, id, 1, 0, result))
+                if result is None:
+                    # No data fits the condition.  Numeric answer cannot be returned.
+                    results.append((1, id, 1, 0.0, 'Expectation Error -- No data fits condition'))
+                    result
+                elif type(result) == type(''):
+                    results.append((1, id, 1, 0.0, result))
                 else:
-                    results.append((1, id, 1, result, ''))
+                    results.append((1, id, 1, float(result), ''))
             return results
         except:
             from because.hpcc_utils import format_exc
@@ -293,6 +297,131 @@ EXPORT ProbSpace := MODULE
             for i in range(len(results)):
                 id = inIds[i]
                 dist = results[i]
+                if dist is None:
+                    # No distribution can be created.
+                    yield ( id,
+                            inQueries[i],
+                            0,
+                            False,
+                            False,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            [False, False],
+                            [0.0, 0.0],
+                            0,
+                            [],
+                            [],
+                            [(0, 'Distribution Error -- Not enough data points to assess distribution.')]
+                            )
+                else:
+                    hist = []
+                    for entry in dist.ToHistTuple():
+                        minv, maxv, p = entry
+                        hist.append((float(minv), float(maxv), float(p)))
+                    isDiscrete = dist.isDiscrete
+                    isCategorical = PS.isCategorical(dist.rvName)
+                    deciles = []
+                    if not isDiscrete:
+                        # Only do deciles for continuous data.
+                        for p in range(10, 100, 10):
+                            decile = float(dist.percentile(p))
+                            deciles.append((float(p), float(p), decile))
+                    stringVals = []
+                    if PS.isStringVal(dist.rvName):
+                        strVals = PS.getValues(dist.rvName)
+                        for j in range(len(strVals)):
+                            strVal = strVals[j]
+                            numVal = int(PS.getNumValue(dist.rvName, strVal))
+                            stringVals.append((numVal, strVal))
+                        stringVals.sort()
+                    bounds = dist.truncation()
+                    isBoundedL = not isDiscrete and bounds[0] is not None
+                    isBoundedU = not isDiscrete and bounds[1] is not None
+                    boundL = boundU = 0.0
+                    if isBoundedL:
+                        boundL = bounds[0]
+                    if isBoundedU:
+                        boundU = bounds[1]
+                    modality = dist.modality()
+
+                    yield ( id,
+                            inQueries[i],
+                            dist.N,
+                            isDiscrete,
+                            isCategorical,
+                            float(dist.minVal()),
+                            float(dist.maxVal()),
+                            dist.E(),
+                            dist.stDev(),
+                            dist.skew(),
+                            dist.kurtosis(),
+                            float(dist.median()),
+                            float(dist.mode()),
+                            [isBoundedL, isBoundedU],
+                            [boundL, boundU],
+                            modality,
+                            hist,
+                            deciles,
+                            stringVals
+                            )
+        except:
+            from because.hpcc_utils import format_exc
+            assert False, format_exc.format('QueryDistr')
+    ENDEMBED;
+
+    /**
+      * Call the ProbSpace.distr() function with a set of queries.
+      *
+      * Queries are distributed among nodes so that the run in parallel.
+      * Returns distributions as Types.Distribution dataset
+      *
+      */
+    EXPORT STREAMED DATASET(PDist) Distr(STREAMED DATASET(ProbQuery) queries, UNSIGNED ps) := 
+        EMBED(Python: globalscope(globalScope), persist('query'), activity)
+        from because.hpcc_utils import formatQuery
+        import numpy as np
+        assert 'PSDict' in globals(), 'ProbSpace.Distr: PSDict is not initialized.'
+        assert ps in PSDict, 'ProbSpace.Distr: invalid probspace id = ' + str(ps)
+        PS = PSDict[ps]
+        try:
+            results = []
+            for query in queries:
+                targets = []
+                id, targs, conds = query[:3]
+                targets = extractSpec(targs)
+                assert len(targets) == 1 and len(targets[0]) == 1, 'ProbSpace.Distr: Target must be single and unbound (i.e. No arguments provided).'
+                targets = targets[0]
+                conditions = extractSpec(conds)
+                dist = PS.distr(targets, conditions)
+                if dist is None:
+                    # No distribution can be created.
+                    yield ( id,
+                            formatQuery.format('distr', [targets], conditions),
+                            0,
+                            False,
+                            False,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            0.0,
+                            [False, False],
+                            [0.0, 0.0],
+                            0,
+                            [],
+                            [],
+                            [(0, 'Distribution Error -- Not enough data points to assess distribution.')]
+                            )
+                    continue                 
                 hist = []
                 for entry in dist.ToHistTuple():
                     minv, maxv, p = entry
@@ -324,7 +453,7 @@ EXPORT ProbSpace := MODULE
                 modality = dist.modality()
 
                 yield ( id,
-                        inQueries[i],
+                        formatQuery.format('distr', [targets], conditions),
                         dist.N,
                         isDiscrete,
                         isCategorical,
@@ -343,73 +472,7 @@ EXPORT ProbSpace := MODULE
                         deciles,
                         stringVals
                         )
-        except:
-            from because.hpcc_utils import format_exc
-            assert False, format_exc.format('QueryDistr')
-    ENDEMBED;
 
-    /**
-      * Call the ProbSpace.distr() function with a set of queries.
-      *
-      * Queries are distributed among nodes so that the run in parallel.
-      * Returns distributions as Types.Distribution dataset
-      *
-      */
-    EXPORT STREAMED DATASET(PDist) Distr(STREAMED DATASET(ProbQuery) queries, UNSIGNED ps) := 
-        EMBED(Python: globalscope(globalScope), persist('query'), activity)
-        from because.hpcc_utils import formatQuery
-        import numpy as np
-        assert 'PSDict' in globals(), 'ProbSpace.Distr: PSDict is not initialized.'
-        assert ps in PSDict, 'ProbSpace.Distr: invalid probspace id = ' + str(ps)
-        PS = PSDict[ps]
-        try:
-            results = []
-            for query in queries:
-                targets = []
-                id, targs, conds = query[:3]
-                targets = extractSpec(targs)
-                assert len(targets) == 1 and len(targets[0]) == 1, 'ProbSpace.Distr: Target must be single and unbound (i.e. No arguments provided).'
-                targets = targets[0]
-                conditions = extractSpec(conds)
-                dist = PS.distr(targets, conditions)
-                hist = []
-                for entry in dist.ToHistTuple():
-                    minv, maxv, p = entry
-                    hist.append((float(minv), float(maxv), float(p)))
-                isDiscrete = dist.isDiscrete
-                isCategorical = PS.isCategorical(dist.rvName)
-                deciles = []
-                if not isDiscrete:
-                    # Only do deciles for continuous data.
-                    for p in range(10, 100, 10):
-                        decile = float(dist.percentile(p))
-                        deciles.append((float(p), float(p), decile))
-                stringVals = []
-                if PS.isStringVal(dist.rvName):
-                    strVals = PS.getValues(rvName)
-                    for i in range(len(strVals)):
-                        strVal = strVals[i]
-                        numVal = int(PS.getNumValue(dist.rvName, strVal))
-                        stringVals.append((numVal, strVal))
-                    stringVals.sort()
-
-                results.append((id,
-                                formatQuery.format('distr', [(targets,)], conditions),
-                                dist.N,
-                                isDiscrete,
-                                isCategorical,
-                                float(dist.minVal()),
-                                float(dist.maxVal()),
-                                dist.E(),
-                                dist.stDev(),
-                                dist.skew(),
-                                dist.kurtosis(),
-                                float(dist.median()),
-                                float(dist.mode()),
-                                hist,
-                                deciles,
-                                stringVals
-                                ))
             return results
         except:
             from because.hpcc_utils import format_exc
@@ -434,8 +497,8 @@ EXPORT ProbSpace := MODULE
                 targets = []
                 id, targs, conds = query[:3]
                 for targ in targs:
-                    var, args = targ
-                    assert len(args) == 0, 'ProbSpace.Dependence: Target must be unbound (i.e. No arguments provided).'
+                    var, args, strArgs = targ[:3]
+                    assert len(args) == 0 and len(strArgs) == 0, 'ProbSpace.Dependence: Target must be unbound (i.e. No arguments provided).'
                     targSpec = var
                     targets.append(targSpec)
                 assert len(targets) == 2, 'ProbSpace.Dependence:  Dependence requires two targets. ' + str(len(targets)) + ' were given.'
@@ -443,11 +506,16 @@ EXPORT ProbSpace := MODULE
                 v2 = targets[1]
                 conditions = []
                 for cond in conds:
-                    cVar, cArgs = cond
-                    if len(cArgs) >= 1:
-                        condition = (cVar,) + tuple(cArgs)
+                    cVar, cNumArgs, cStrArgs, cIsList = cond
+                    if len(cStrArgs) > 0:
+                        cArgs = cStrArgs
                     else:
-                        condition = cVar
+                        cArgs = cNumArgs
+
+                    if cIsList:
+                        condition = (cVar,) + (tuple(cArgs),)
+                    else:
+                        condition = (cVar,) + tuple(cArgs)
                     conditions.append(condition)
                 result = PS.dependence(v1, v2, conditions)
                 results.append((1, id, 1, result))

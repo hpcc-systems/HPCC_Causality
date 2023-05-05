@@ -565,6 +565,7 @@ EXPORT cModel := MODULE
         assert 'CMDict' in globals(), 'cModel.pyDiscModel: CMDict is not initialized.'
         assert cm in CMDict, 'cModel.pyDiscModel: invalid cModel id = ' + str(cm)
         CM = CMDict[cm]
+        #assert False, 'disc: vars, pwr, sens, depth = ' + str(vars) + ',' + str(pwr) + ',' + str(sensitivity) + ',' + str(depth)
         #assert False, 'pwr, sensitivity, depth = ' + repr(pwr) + ', ' + repr(sensitivity) + ', ' + repr(depth)
         try:
             dirCache = {}
