@@ -33,7 +33,7 @@ nTestRecs := 100000;
 // SEM is Model M8.
 semRow := ROW({
     [],
-    ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'], // Variable names
+    ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'], // Variable names
     // Equations
     ['B = logistic(0,1)',  // Can use any distribution defined in numpy.random
     'F = logistic(0,1)',
@@ -43,7 +43,8 @@ semRow := ROW({
     'C = tanh(B + A + D) + logistic(0,.4)',
     'E = C + logistic(0,.4)',
     'H = "small" if E < 0 else "med" if E < 1 else "large"',
-    'I = beta(2,5)'
+    'I = beta(2,5)',
+    'J = int(abs(B * 5)) % 5'
     ]}, SEM);
 
 mySEM := DATASET([semRow], SEM);
@@ -67,7 +68,7 @@ OUTPUT(testDat, NAMED('Dat'));
 
 OUTPUT(mySEM, NAMED('SEM'));
 
-prob := Probability(testDat, semRow.VarNames, categoricals:=['H']);
+prob := Probability(testDat, semRow.VarNames, categoricals:=['H', 'J']);
 
 // queries := [
 //     'P(A)',
@@ -84,7 +85,7 @@ gr := viz.getGrid(pq, prob.PS);
 OUTPUT(gr, NAMED('grid'));
 
 queries := [
-    'P(I)',
+    'P(B > .5 | J)',
     'P(A|B)'
     ];
 viz.Plot(queries, prob.PS);

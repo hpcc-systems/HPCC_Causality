@@ -184,6 +184,14 @@ EXPORT viz := MODULE
         assert 'PSDict' in globals(), 'viz.fillDataGrid: PSDict is not initialized.'
         assert ps in PSDict, 'viz.fillDataGrid: invalid probspace id = ' + str(ps)
         PS = PSDict[ps]
+        def isnum(instr):
+            # Function to test for a numeric string.
+            try:
+                float(instr)
+                return True
+            except:
+                return False
+        
         try:
             for result in presults:
                 # Should only be one record on each node.
@@ -236,6 +244,9 @@ EXPORT viz := MODULE
                         nom = str(varSpec[0])
                         if nom != 'n/a':
                             # Filter out n/a items from bprob
+                            if PS.isCategorical(var):
+                                if isnum(nom):
+                                    nom = '_' + str(int(varSpec[0])) 
                             nominals.append(nom)
                     else:
                         spec = (var,)
