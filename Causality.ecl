@@ -31,6 +31,8 @@ NumericField := cTypes.NumericField;
   *     intervention on one or more variable.  See Query for details.
   * - Metrics -- Evaluate various causal metrics on desgnated pairs 
   *      [source, destination] of variables.
+  * - DiscoverModel -- Utilize a range of causal discovery methods to discover causal relationships
+  *      between variables.
   *
   * @param mod A causal model in DATASET(cModel) format.  The dataset should
   *    contain only a single record, defining the model.
@@ -216,7 +218,33 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
         RETURN metrics_S;
     END;
 
+ 
     /**
+      * Analyze the data to estimate the causal relationships between variables.
+      *
+      * @param vars A set of variable names among which to discover relationships.  If omitted,
+      *           will use all variables in dataset.
+      *
+      * @param pwr The power to use for statisitical queries.  Range [1, 100].  The higher power,
+      *           the more accuracy, but longer runtime.  Power=1 suffices for liner relationships.
+      *           Power > 10 is not recommended due to very long runtimes.  Default = 1.
+      * @param sensitivity The sensitivity of dependence detection to use.  Range 1.0 -10.0. Default is 10
+      *           (Maximum Sensitivity).  It can be useful to reduce sensitivity in real-world datasets, 
+      *           to restrict the number of relationships found.
+      * @param depth Determines how many simultaneous conditional variables will be evaluated.  Default = 2.
+      *           values above 3 may be problematic due to long run times, and possibly exceding the sensitivity
+      *           of the instruments.
+      * @return A DATASET(DiscResult) with a single record representing the results
+      *           of the discovery.
+      * @see Types.DiscResult
+      */
+    EXPORT DATASET(DiscResult) DiscoverModel(SET OF STRING vars=[],  REAL pwr=powerDefault, REAL sensitivity=10, UNSIGNED depth=2) := FUNCTION
+      result := cModel.DiscoverModel(vars, pwr, sensitivity, depth, CM);
+      RETURN result;
+    END;
+    
+   /**
+      * This function is Deprecated.  Use DiscoverModel instead.
       * Analyze the data to estimate the causal relationships between variables.
       *
       * Produces information that is useful for understanding the variables' relationships,
@@ -244,9 +272,4 @@ EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
         RETURN rpt;
     END;
 
-    EXPORT DATASET(DiscResult) DiscoverModel(SET OF STRING vars,  REAL pwr=powerDefault, REAL sensitivity=10, UNSIGNED depth=2) := FUNCTION
-      result := cModel.DiscoverModel(vars, pwr, sensitivity, depth, CM);
-      RETURN result;
-    END;
-    
 END;

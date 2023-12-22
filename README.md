@@ -43,6 +43,7 @@ ecl bundle install https://github.com/RogerDev/HPCC_Causality.git
 
 Each of the main modules provides documentation and examples of use.
 Documentation is provided within the module and examples are in the test folder.
+For an in-depth tutorial, please see: https://hpccsystems.com/resources/hpcc-causality-tookit-version-2-0.
   
 ### Probability Queries
 The probability, causality, and Visualization modules share a common query format.  Natural textual queries are used as they allow both simple and sophisticated queries to be composed without complex nested data structures.
@@ -61,4 +62,6 @@ There are minor differences in the query semantics between the three use cases: 
 -  Probability supports two types of query:
   - Scalar Query -- Returns a single value.  For example: P(A = 5), E(A)
   - Distribution Query -- Returns a 'distribution' structure. For example: P(A), P(A | B > 0).
-- Causality provides a superset of probability queries, that may also contain a 'do()' clause, specifying one or more causal intervention.  Causal queries require the specification of a 'causal model' in addtion to the query.  
+- Causality provides a superset of probability queries, that may also contain a 'do()' clause, specifying one or more causal intervention.  Causal queries require the specification of a 'causal model' in addtion to the query.
+
+

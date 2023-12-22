@@ -24,12 +24,20 @@ EXPORT Types := MODULE
       * Natural Language Query.
       *
       * Supports probability queries in a simple format.
+      * @field id A unique id for this query.
+      * @field query A string representing the probability query e.g. 'P(A=1)'.
       */
     EXPORT nlQuery := RECORD
       UNSIGNED id;
       STRING query;
     END;
 
+    /**
+      * Result of a causal query.  Includes the orginal query in addition
+      * to the AnyField result.
+      *
+      * @field query The original query that produced this result.
+      */
     EXPORT nlQueryRslt := RECORD(AnyField)
       STRING query;
     END;
@@ -106,11 +114,21 @@ EXPORT Types := MODULE
         REAL P;
     END;
 
+    /**
+      * Child dataset of Distribution to hold the mapping between string values and
+      * their numeric eqivalent
+      */
     EXPORT StrValEntry := RECORD
       UNSIGNED numVal;
       STRING strVal;
     END;
 
+    /**
+      * Input to a causal metric query.
+      * @field id A unique id for this query
+      * @field cause The name of the causal variable for the query
+      * @field effect The name of the effect variable for the query
+      */
     EXPORT MetricQuery := RECORD
       UNSIGNED id;
       STRING cause;
@@ -323,6 +341,17 @@ EXPORT Types := MODULE
       DATASET(SetMembers) VarGraph;
     END;
 
+  /**
+    * Results of the DiscoveryModel function
+    * Provides the discovered causal model as a list of edges [cause, effect], and
+    * associated metrics.
+    *
+    * @field causeVar The name of the causal variable in the relationship
+    * @field effectVar The name of the effect variable in the relationship
+    * @field strength The strength of the dependence between the variables
+    * @field correlation The statistical correlation between the variables
+    * @field MDE The Maximum Direct Effect of the cause on the effect variable.
+    */
   EXPORT DiscoveryResult := RECORD
     STRING causeVar;
     STRING effectVar;
@@ -331,11 +360,54 @@ EXPORT Types := MODULE
     REAL MDE;
   END;
 
+/**
+    * Child data type for DatasetSummary below.  Describes a single variable
+    * in the dataset.
+    *
+    * @field name The name of the variable.
+    * @field isDiscrete True if the variable is discrete, otherwise False.
+    * @field isCategorical True if the variable is categorical, otherwise False.
+    * @field isTextual True if the variable is a text-based categorical, otherwise False.
+    * @field cardinality The number of unique values which the discrete variable takes in the dataset.
+    * @field numValues The numeric values the discrete variable takes in the dataset.
+    * @field textValues The textual values the textual categorical variables takes in the dataset
+    */
+  EXPORT VarSummary := RECORD
+    STRING name;
+    BOOLEAN isDiscrete;
+    BOOLEAN isCategorical;
+    BOOLEAN isTextual;
+    UNSIGNED cardinality;
+    SET OF REAL numValues;
+    SET OF STRING textValues;
+  END;
+  /**
+    * Dataset Summary returned from Probability.Summary.
+    *
+    * Provides an overview of the dataset.
+    * @field numRecords The number of records in the dataset.
+    * @field varNames A set of the variable names in the dataset
+    * @field varDetails A set of Var Summary records describing each variable in the dataset.
+    */
+  EXPORT DatasetSummary := RECORD
+    UNSIGNED numRecords;
+    SET OF STRING varNames;
+    DATASET(VarSummary) varDetails;
+  END;
+
+
+  /**
+    * @internal
+    * Internal data type used by visualization
+    */
   EXPORT ChartGrid := RECORD
     UNSIGNED id;
     DATASET(AnyField) gridItem;
   END;
-
+  /**
+    * @internal
+    * Internal data type used by visualization
+    */
   EXPORT ChartData := RECORD
     UNSIGNED id;
     STRING x_;
@@ -346,7 +418,10 @@ EXPORT Types := MODULE
     REAL range2low := 0.0;
     REAL range2high := 0.0;
   END;
-
+  /**
+    * @internal
+    * Internal data type used by visualization
+    */
   EXPORT ChartInfo := RECORD
     STRING dataname;
     STRING qtype;
@@ -362,19 +437,4 @@ EXPORT Types := MODULE
     REAL range2high;
   END;
 
-  EXPORT VarSummary := RECORD
-    STRING name;
-    BOOLEAN isDiscrete;
-    BOOLEAN isCategorical;
-    BOOLEAN isTextual;
-    UNSIGNED cardinality;
-    SET OF REAL numValues;
-    SET OF STRING textValues;
-    
-  END;
-  EXPORT DatasetSummary := RECORD
-    UNSIGNED numRecords;
-    SET OF STRING varNames;
-    DATASET(VarSummary) varDetails;
-  END;
 END;
