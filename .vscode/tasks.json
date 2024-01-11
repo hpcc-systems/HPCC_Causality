@@ -1,0 +1,17 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "npm",
+            "script": "serve",
+            "path": "resources",
+            "problemMatcher": [],
+            "label": "npm: serve - resources",
+            "detail": "npm run esbuild -- --watch --serve --servedir=.",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

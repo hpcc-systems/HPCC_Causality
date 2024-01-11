@@ -85,7 +85,7 @@ testsD := DATASET([{1, DATASET([{'X1'}], ProbSpec), DATASET([], ProbSpec)}, // S
                   {3, DATASET([{'Y1'}], ProbSpec), DATASET([], ProbSpec)},
                   {4, DATASET([{'Y1'}], ProbSpec), DATASET([{'X1', [2]}], ProbSpec)},
                   {5, DATASET([{'Y2'}], ProbSpec), DATASET([], ProbSpec)},
-                  {6, DATASET([{'Y5'}], ProbSpec), DATASET([{'X2',[-100,0]},{'X3',[1]}], ProbSpec)}
+                  {6, DATASET([{'Y5'}], ProbSpec), DATASET([{'X2',[-100,0]},{'X3',[3]}], ProbSpec)}
         ], ProbQuery);
 
 resultsD := prob.Distr(testsD);
@@ -135,8 +135,8 @@ targetVar := 'Y3';
 //OUTPUT(indDat, NAMED('indDat'));
 preds := prob.Predict(targetVar, predVars, indDat);
 
-OUTPUT(preds, ALL, NAMED('Predictions'));
+//OUTPUT(preds, ALL, NAMED('Predictions'));
 
 accuracy := ML_Core.Analysis.Regression.Accuracy(preds, depDat);
 
-OUTPUT(accuracy, NAMED('PredAccuracy'));
+//OUTPUT(accuracy, NAMED('PredAccuracy'));

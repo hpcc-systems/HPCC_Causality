@@ -1,0 +1,26 @@
+{
+    "compilerOptions": {
+        "outDir": "./lib-esm",
+        "target": "ES2022",
+        "module": "ES2022",
+        "moduleResolution": "nodenext",
+        "sourceMap": true,
+        "declaration": true,
+        "declarationDir": "./types",
+        "noImplicitAny": false,
+        "noEmitOnError": false,
+        "noUnusedLocals": true,
+        "strictNullChecks": true,
+        "noImplicitThis": true,
+        "importHelpers": false,
+        "esModuleInterop": true,
+        "lib": [
+            "DOM",
+            "ES2022"
+        ],
+        "types": []
+    },
+    "include": [
+        "src/**/*"
+    ]
+}

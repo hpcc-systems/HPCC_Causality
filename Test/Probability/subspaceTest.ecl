@@ -1,7 +1,6 @@
 /**
-  * Test the natural language query mechanism for Probabilities,
-  * Expectations, and Distributions.  Include textual variables.
-  *
+  * Test the probability.SubSpace capability.  Make sure
+  * queries deliver different results agains different subspaces.
   * Uses the Synth module to generate the test data.
   */
 IMPORT $.^.^ AS HPCC_Causality;
@@ -55,6 +54,8 @@ OUTPUT(dat[..10000], ALL, NAMED('Samples'));
 // Treat TV as a categorical variable so that expectations come out as strings.
 prob := Probability(dat, semRow.VarNames, categoricals:=['TV']);
 
+summ := prob.Summary();
+OUTPUT(summ, NAMED('DatasetSummary'));
 
 tests := ['P(X1 >= 2 )', 'P(TV = medium | X5 between [.4,.8])',
           'E(Y4)', 'E(TV| X2 < -.75)',
@@ -70,3 +71,16 @@ dtests := ['P(X1)', 'P(TV)', 'P(TV|X2 > -.5)', 'P(Y1 | X1=1)', 'P(X2)', 'P(X4)']
 dresults := prob.QueryDistr(dtests);
 
 OUTPUT(dresults, ALL, NAMED('Distributions'));
+
+ss1 := prob.SubSpace('X2 < 0');
+
+ss1summ := prob.Summary(ss1);
+OUTPUT(ss1summ, NAMED('DatasetSummarySS'));
+
+ss1results := prob.Query(tests, ss1);
+
+OUTPUT(ss1results, ALL, NAMED('ProbabilitiesSS'));
+
+ss1dresults := prob.QueryDistr(dtests, ss1);
+
+OUTPUT(ss1dresults, ALL, NAMED('DistributionsSS'));

@@ -3,13 +3,19 @@ IMPORT HPCC_Causality.Types;
 IMPORT ML_Core.Types AS cTypes;
 IMPORT HPCC_Causality.internal.cModel;
 
+powerDefault := 1;
+
 cModelTyp := Types.cModel;
 validationReport := Types.validationReport;
+MetricQuery := Types.MetricQuery;
 cMetrics := Types.cMetrics;
 ProbQuery := Types.ProbQuery;
 Distr := Types.Distribution;
-DiscoveryReport := Types.DiscoveryReport;
-
+ScanReport := Types.ScanReport;
+DiscResult := Types.DiscoveryResult;
+nlQuery := Types.nlQuery;
+nlQueryRslt := Types.nlQueryRslt;
+AnyField := Types.AnyField;
 NumericField := cTypes.NumericField;
 
 /**
@@ -20,22 +26,26 @@ NumericField := cTypes.NumericField;
   * Methods include:
   * - ValidateModel -- Analyze the data against the provided causal model and
   *         evaluate the degree of correspondence between the two.
-  * - Intervene -- Simulate the effect on a target variable of a causal 
-  *     intervention on one or more variable
+  * - Causal (or Probabilistic) Query.  This is a superset of probability queries,
+  *     adding  support for causal interventions  that simulate the effect on a target variable of a causal 
+  *     intervention on one or more variable.  See Query for details.
   * - Metrics -- Evaluate various causal metrics on desgnated pairs 
   *      [source, destination] of variables.
+  * - DiscoverModel -- Utilize a range of causal discovery methods to discover causal relationships
+  *      between variables.
   *
   * @param mod A causal model in DATASET(cModel) format.  The dataset should
   *    contain only a single record, defining the model.
-  * @param dat The data in NumericField format.  The field number should
-  *    correspond to the order of variables specified in the model.
+  * @param PS The id of a Probability Space or Subspace containing the
+  *    dataset. This is obtained by <probabilityInstance>.PS, or as returned from
+  *    a probability.SubSpace() call.
   *
   * @see Types.cModel
   * @see ML_Core.Types.NumericField
   *
   */
-EXPORT Causality(DATASET(cModelTyp) mod, DATASET(NumericField) dat)  := MODULE
-    SHARED CM := cModel.Init(mod, dat);
+EXPORT Causality(DATASET(cModelTyp) mod, UNSIGNED PS)  := MODULE
+    SHARED CM := cModel.Init(mod, PS);
     /**
       * Validate the causal model relative to the data.
       *
@@ -43,15 +53,16 @@ EXPORT Causality(DATASET(cModelTyp) mod, DATASET(NumericField) dat)  := MODULE
       *     Higher values lead to exponentially increasing run times, and diminishing
       *     evaluation accuracy.  Very large datasets are required in order to evaluate
       *     higher order evaluations (default=3, recommended).
-      * @param strength The thoroughness to be used in conditionalizing on variables.
-      *     Allows a tradeoff between run-time and certainty of discrimination.  Strength
+      * @param pwr Power. The thoroughness to be used in conditionalizing on variables.
+      *     Allows a tradeoff between run-time and certainty of discrimination.  Power
       *     = 1 is sufficient to distinguish linear relationships, where higher numbers
       *     are needed to distinguish subtle non-linear relationships.  Range [1,100].
-      *     For practical purposes, strength > 5 should not be needed. Default = 1.
+      *     For practical purposes, power > 5 should not be needed. Default = 1.
+      * @param sensitivity
       * @return A detailed validation report in Types.ValidationReport format
       * @see Types.ValidationReport
       */
-    EXPORT ValidationReport ValidateModel(UNSIGNED order=3, UNSIGNED strength=1) := FUNCTION
+    EXPORT ValidationReport ValidateModel(UNSIGNED order=3, REAL pwr=powerDefault, REAL sensitivity=10) := FUNCTION
         ValidationReport rollupReport(ValidationReport l, ValidationReport r) := TRANSFORM
             SELF.confidence := 0.0;
             SELF.NumTotalTests := l.NumTotalTests + r.NumTotalTests;
@@ -73,7 +84,7 @@ EXPORT Causality(DATASET(cModelTyp) mod, DATASET(NumericField) dat)  := MODULE
             SELF.Errors := l.Errors + r.Errors;
             SELF.Warnings := l.Warnings + r.Warnings;
         END;
-        results0 := cModel.TestModel(order, strength, CM);
+        results0 := cModel.TestModel(order, pwr, sensitivity, CM);
         results1 := ROLLUP(results0, TRUE, rollupReport(LEFT, RIGHT));
         resultsRec := results1[1];
         score := cModel.ScoreModel(resultsRec.NumTestsPerType,
@@ -87,7 +98,22 @@ EXPORT Causality(DATASET(cModelTyp) mod, DATASET(NumericField) dat)  := MODULE
     END;
 
     /**
-      * Calculate the results of a Causal Intervention.
+      * Calculate the distributions resulting from  a set of Causal Probability Queries.
+      *
+      * Causal Proabability queries are a superset of probability queries that may
+      * contain an intervention (i.e. do()) clause.
+      * 
+      * If no do() clause is present, then the results will be the same as a normal 
+      * probability query.
+      *
+      * The target portion must specify a bare (unbound) variable, as we are looking
+      * for a distribution as a result.
+      * 
+      * Do() clauses are specified within the "given" portion of the query, and
+      * can only use equality designation.  For example:
+      *   'P(A | do(B=1, C=2), D between [-1,3])'
+      * This is the probability distribution of A given that D is between -1 and 3,
+      * and that we intervened to force the value of B to 1 and the value of C to 2.
       *
       * Interventions simulate the effect of setting a variable or variables
       * to fixed values, while breaking the links from those variables' parents.
@@ -95,23 +121,75 @@ EXPORT Causality(DATASET(cModelTyp) mod, DATASET(NumericField) dat)  := MODULE
       * for each query.  This is roughly equivalent to performing a randomized
       * study.
       *
-      * Interventions are of the form:
-      * - Distribution = (Var | List of interventions)
       *
       * @param queries A list of queries.  Exactly 1 target per query must be specified,
-      *        and the target must be unbound (i.e. with zero arguments).  One or more
+      *        and the target must be unbound (i.e. with no comparitor).  One or more
       *        interventions can be provided for each variable.  Interventions must be
-      *        of an exact value (e.g. do(var = value)).  This is indicated by a single
-      *        arg in the intervention ProbSpec.
+      *        of an exact value (e.g. do(var = value)).
       *
       * @return A set of Types.Distr records, describing each of the queried distributions.
       *
       */
-    EXPORT DATASET(Distr) Intervene(DATASET(ProbQuery) queries, UNSIGNED pwr=1) := FUNCTION
-        queries_D := DISTRIBUTE(queries, id);
-        distrs := cModel.Intervene(queries_D, pwr, CM);
-        distrs_S := SORT(distrs, id);
-        RETURN distrs_S;
+    EXPORT DATASET(Distr) QueryDistr(SET OF STRING queries, REAL pwr=powerDefault) := FUNCTION
+      dummy := DATASET([{1}], {UNSIGNED d});
+      queryRecs := NORMALIZE(dummy, COUNT(queries), TRANSFORM(nlQuery, SELF.id:=COUNTER, 
+              SELF.query:=queries[COUNTER]));
+      queries_D := DISTRIBUTE(queryRecs, id);
+      distrs := cModel.QueryDistr(queries_D, CM);
+      distrs_S := SORT(distrs, id);
+      RETURN distrs_S;
+    END;
+
+    /**
+      * Calculate the probabilities or expectations resulting from  a set of 
+      * Causal Probability Queries.
+      *
+      * Causal Proabability queries are a superset of probability queries that may
+      * contain an intervention (i.e. do()) specification.
+      * 
+      * If no do() clause is present, then the results will be the same as a normal 
+      * probability query.
+      *
+      * Probabilities or expectations may be requested by the query. For example:
+      *   'P(A between [1,3] | B < 0)' # The probability that A is between 1 and 3 given
+      *                                # that B is less than zero.
+      *   'E(A | B < 0)'               # The expected value of A given that B is less than
+      *                                # zero.
+      *
+      * Note that for probability queries that the target must be "bound" (i.e. includes a
+      * comparison), while for expectation queries, the target must be "unbound" (i.e. a bare
+      * variable name).
+      *
+      * For details of the query syntax, see the README file.
+      *
+      * Do() clauses are specified within the "given" portion of the query, and
+      * can only use equality designation.  For example:
+      *   'E(A | do(B=1, C=2), D between [-1,3])'
+      * This is the expected value of A given that D is between -1 and 3,
+      * and that we intervened to force the value of B to 1 and the value of C to 2.
+      *
+      * Interventions simulate the effect of setting a variable or variables
+      * to fixed values, while breaking the links from those variables' parents.
+      * The distribution of a target variable given the interventions is returned
+      * for each query.  This is roughly equivalent to performing a randomized
+      * study.
+      *
+      * @param queries A list of queries.  One or more
+      *        interventions can be provided for each variable.  Interventions must be
+      *        of an exact value (e.g. do(var = value)).
+      *
+      * @return A set of Types.AnyField records, containing the numeric (or textual).
+      *        result of each query.
+      *
+      */
+    EXPORT DATASET(nlQueryRslt) Query(SET OF STRING queries, REAL pwr=powerDefault) := FUNCTION
+      dummy := DATASET([{1}], {UNSIGNED d});
+      queryRecs := NORMALIZE(dummy, COUNT(queries), TRANSFORM(nlQuery, SELF.id:=COUNTER, 
+              SELF.query:=queries[COUNTER]));
+      queries_D := DISTRIBUTE(queryRecs, id);
+      results := cModel.Query(queries_D, CM);
+      results_S := SORT(results, id);
+      RETURN results_S;
     END;
 
     /**
@@ -133,14 +211,40 @@ EXPORT Causality(DATASET(cModelTyp) mod, DATASET(NumericField) dat)  := MODULE
       *     id of the original query.
       *
       */
-    EXPORT DATASET(cMetrics) Metrics(DATASET(ProbQuery) queries, UNSIGNED pwr=1) := FUNCTION
+    EXPORT DATASET(cMetrics) Metrics(DATASET(MetricQuery) queries, REAL pwr=powerDefault) := FUNCTION
         queries_D :=  DISTRIBUTE(queries, id);
         metrics := cModel.Metrics(queries_D, pwr, CM);
         metrics_S := SORT(metrics, id);
         RETURN metrics_S;
     END;
 
+ 
     /**
+      * Analyze the data to estimate the causal relationships between variables.
+      *
+      * @param vars A set of variable names among which to discover relationships.  If omitted,
+      *           will use all variables in dataset.
+      *
+      * @param pwr The power to use for statisitical queries.  Range [1, 100].  The higher power,
+      *           the more accuracy, but longer runtime.  Power=1 suffices for liner relationships.
+      *           Power > 10 is not recommended due to very long runtimes.  Default = 1.
+      * @param sensitivity The sensitivity of dependence detection to use.  Range 1.0 -10.0. Default is 10
+      *           (Maximum Sensitivity).  It can be useful to reduce sensitivity in real-world datasets, 
+      *           to restrict the number of relationships found.
+      * @param depth Determines how many simultaneous conditional variables will be evaluated.  Default = 2.
+      *           values above 3 may be problematic due to long run times, and possibly exceding the sensitivity
+      *           of the instruments.
+      * @return A DATASET(DiscResult) with a single record representing the results
+      *           of the discovery.
+      * @see Types.DiscResult
+      */
+    EXPORT DATASET(DiscResult) DiscoverModel(SET OF STRING vars=[],  REAL pwr=powerDefault, REAL sensitivity=10, UNSIGNED depth=2) := FUNCTION
+      result := cModel.DiscoverModel(vars, pwr, sensitivity, depth, CM);
+      RETURN result;
+    END;
+    
+   /**
+      * This function is Deprecated.  Use DiscoverModel instead.
       * Analyze the data to estimate the causal relationships between variables.
       *
       * Produces information that is useful for understanding the variables' relationships,
@@ -163,8 +267,9 @@ EXPORT Causality(DATASET(cModelTyp) mod, DATASET(NumericField) dat)  := MODULE
       *
       * 
       */
-    EXPORT DATASET(DiscoveryReport) DiscoverModel( UNSIGNED pwr=1) := FUNCTION
-        discRpt := cModel.DiscoverModel(pwr, CM);
-        RETURN discRpt;
+    EXPORT DATASET(ScanReport) ScanModel( REAL pwr=powerDefault) := FUNCTION
+        rpt := cModel.ScanModel(pwr, CM);
+        RETURN rpt;
     END;
+
 END;

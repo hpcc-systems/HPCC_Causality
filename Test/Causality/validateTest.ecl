@@ -1,8 +1,7 @@
 /**
   * Test and example for Model Validation.
   *
-  * Uses the Synth module to generate M2 model.
-  * Tests against the M8 model definition:
+  * Uses the Synth module to generate M8 model:
   * B is Exogenous
   * F is Exogenous
   * G is Exogenous
@@ -32,12 +31,12 @@ semRow := ROW({
     ['A', 'B', 'C', 'D', 'E', 'F', 'G'], // Variable names 
     // Equations
     ['B = logistic(0,1)',  // Can use any distribution defined in numpy.random
-    'F = logistic(0,1)',
-    'G = logistic(0,1)',
-    'A = (B + F) / 2.0 + logistic(0,.1)',
-    'D = (A + G) / 2.0 + logistic(0,.1)',
-    'C = (B + A + D) / 3.0 + logistic(0,.1)',
-    'E = C + logistic(0,.1)'
+    'F = logistic(-1,1)',
+    'G = logistic(1,1)',
+    'A = (B + F) / 2.0 + logistic(0,.5)',
+    'D = (A + G) / 2.0 + logistic(0,.5)',
+    'C = (B + A + D) / 3.0 + logistic(0,.5)',
+    'E = C + logistic(0,.5)'
     ]}, SEM);
 
 mySEM := DATASET([semRow], SEM);
@@ -58,8 +57,12 @@ mod := DATASET([{'M8', RVs}], Types.cModel);
 
 OUTPUT(mySEM, NAMED('SEM'));
 OUTPUT(mod, NAMED('Model'));
+OUTPUT(testDat, NAMED('DATA'));
 
-cm := HPCC_Causality.Causality(mod, testDat);
+// Create a Probability Space (ProbSpace) given the test data.
+prob := HPCC_Causality.Probability(testDat, semRow.varNames);
+// Create a causal graph given the ProbSpace and the Causal Module
+cg := HPCC_Causality.Causality(mod, prob.PS);
 
-rept := cm.ValidateModel(order:=1, strength:=1);
+rept := cg.ValidateModel(order:=2, pwr:=1);
 OUTPUT(rept, NAMED('ValidationReport'));

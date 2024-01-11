@@ -4,7 +4,7 @@
   *
   * Uses the Synth module to generate the test data.
   */
-IMPORT HPCC_Causality AS HC;
+IMPORT $.^.^ AS HC;
 IMPORT HC.Types;
 
 numRecs := 10000;

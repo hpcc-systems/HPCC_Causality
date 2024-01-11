@@ -12,14 +12,13 @@
   * E <- C
   *
   */
-IMPORT $.^.^ AS HC;
-IMPORT HC.Types;
+IMPORT $.^.^ AS HPCC_Causality;
+IMPORT HPCC_Causality.Types;
 
 IMPORT ML_CORE.Types AS cTypes;
 
-Probability := HC.Probability;
-Causality := HC.Causality;
 
+NumericField := cTypes.NumericField;
 SEM := Types.SEM;
 
 // Number of test records.
@@ -43,7 +42,7 @@ semRow := ROW({
 
 mySEM := DATASET([semRow], SEM);
 
-testDat := HC.Synth(mySEM).Generate(nTestRecs);
+testDat := HPCC_Causality.Synth(mySEM).Generate(nTestRecs);
 
 // Note: The order of variables in the model much match the order of varNames in the SEM.
 RVs := DATASET([
@@ -59,8 +58,8 @@ mod := DATASET([{'M8', RVs}], Types.cModel);
 
 OUTPUT(mySEM, NAMED('SEM'));
 OUTPUT(mod, NAMED('Model'));
-prob := Probability(testDat, semRow.VarNames);
-cm := Causality(mod, prob.PS);
 
-rept := cm.DiscoverModel([], pwr:=5, sensitivity:=10);
-OUTPUT(rept, NAMED('DiscoveryResult'));
+cm := HPCC_Causality.Causality(mod, testDat);
+
+rept := cm.DiscoverModel();
+OUTPUT(rept, NAMED('DiscoveryReport'));
